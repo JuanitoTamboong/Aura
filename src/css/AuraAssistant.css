@@ -1,0 +1,87 @@
+/* Base Styles */
+body {
+    background-color: #05060f;
+    color: #ffffff;
+    font-family: 'Rajdhani', sans-serif;
+    overflow-x: hidden;
+}
+
+/* Glassmorphism & Custom Cards */
+.glass-card {
+    background: linear-gradient(135deg, rgba(17, 19, 40, 0.85), rgba(11, 13, 28, 0.95));
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    backdrop-filter: blur(12px);
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #090a16; }
+::-webkit-scrollbar-thumb { background: #1c1f3d; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #00f0ff; }
+
+/* Pulsing Outer Visualizer Ring Animation */
+@keyframes orbGlow {
+    0%, 100% {
+        box-shadow: 0 0 30px rgba(0, 240, 255, 0.3), inset 0 0 20px rgba(0, 240, 255, 0.2);
+        border-color: rgba(0, 240, 255, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 60px rgba(168, 85, 247, 0.6), inset 0 0 40px rgba(236, 72, 153, 0.4);
+        border-color: rgba(168, 85, 247, 0.6);
+    }
+}
+
+.orb-glow { animation: orbGlow 4s infinite ease-in-out; }
+.listening-active { animation: orbGlow 1s infinite ease-in-out !important; border-color: #00f0ff !important; }
+
+/* Map 3D Grid Overlay Simulation */
+.map-grid {
+    background-image: linear-gradient(rgba(0, 240, 255, 0.1) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(0, 240, 255, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* History Cards */
+.history-card {
+    background: rgba(17, 19, 40, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 10px;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+.history-card:hover {
+    background: rgba(0, 240, 255, 0.1);
+    border-color: rgba(0, 240, 255, 0.3);
+}
+
+/* Progress Bar */
+.progress-bg {
+    background: #1c1f3d;
+    height: 4px;
+    border-radius: 2px;
+    width: 100%;
+    margin-top: 8px;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00f0ff, #a855f7);
+    border-radius: 2px;
+}
+
+/* Right Panel Scroll */
+#videoResultsList { max-height: 200px; overflow-y: auto; padding-right: 5px; }
+
+/* Move the mic button up so it clears the bottom menu */
+#micBtn { margin-bottom: 50px !important; z-index: 50; }
+
+@media (max-width: 500px) {
+    #orbContainer { width: 220px !important; height: 220px !important; margin-top: 10px; }
+    #statusText { font-size: 1.25rem !important; }
+    #transcriptText { font-size: 0.95rem !important; }
+    nav.absolute.bottom-2 { display: none !important; }
+    #micBtn { margin-top: 15px !important; margin-bottom: 20px !important; width: 3.5rem !important; height: 3.5rem !important; }
+    #orbContainer img { width: 5rem !important; height: 5rem !important; }
+}
