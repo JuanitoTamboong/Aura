@@ -14,6 +14,8 @@
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {
+    "@google/genai": "^2.30.0",
+    "groq-sdk": "^1.6.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-icons": "^5.7.0"

@@ -1,24 +1,24 @@
-// src/api/aura-api.ts
+import Groq from "groq-sdk";
+
+const groq = new Groq({ 
+  apiKey: import.meta.env.VITE_GROQ_API_KEY,
+  dangerouslyAllowBrowser: true 
+});
 
 export const askAI = async (prompt: string): Promise<string> => {
   try {
-    const systemPrompt = "You are Aura, a futuristic, helpful, and slightly sassy AI voice assistant created by Juanito Tamboong. Keep your answers helpful, detailed, and conversational, but concise (under 3 sentences) because your answers are spoken aloud via text-to-speech.";
-    
-    const fullPrompt = encodeURIComponent(`${systemPrompt}\n\nUser: ${prompt}\nAura:`);
-
-    const response = await fetch(`https://text.pollinations.ai/${fullPrompt}`, {
-      method: 'GET'
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        { role: "system", content: "You are Aura, a futuristic, helpful, and slightly sassy AI voice assistant created by Juanito Tamboong. Keep your answers helpful, detailed, and conversational, but concise (under 3 sentences)." },
+        { role: "user", content: prompt }
+      ],
+    model: "openai/gpt-oss-20b",
+      temperature: 0.7,
+      max_tokens: 150,
     });
-    
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
-    }
-
-    const aiReply = await response.text();
-    return aiReply.trim();
-    
-  } catch (error) {
-    console.error("AI Fetch Error:", error);
+    return chatCompletion.choices[0]?.message?.content || "I didn't catch that.";
+  } catch (error: any) {
+    console.error("🔥 Groq API Error:", error);
     throw new Error("My AI brain is currently offline. Please check your internet connection or API key.");
   }
 };
