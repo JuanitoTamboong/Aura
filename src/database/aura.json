@@ -6,6 +6,21 @@
     "fallback_message": "I don't have that in my database yet, but let me search the web for you.",
     
     "commands": {
+        "hi": {
+            "speak": "Hello! How can I assist you today?",
+            "title": "Greeting",
+            "category": "Conversation"
+        },
+        "hey": {
+            "speak": "Hey there! What can I do for you?",
+            "title": "Greeting",
+            "category": "Conversation"
+        },
+        "greetings": {
+            "speak": "Greetings! Systems are online and ready.",
+            "title": "Greeting",
+            "category": "Conversation"
+        },
         "who are you": {
             "speak": "I am Aura, your futuristic virtual voice assistant. I was created by Juanito Tamboong to help you control your dashboard with your voice.",
             "title": "Aura Identity",

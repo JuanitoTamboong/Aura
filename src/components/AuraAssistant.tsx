@@ -143,7 +143,7 @@ const AuraAssistant: React.FC = () => {
       }
 
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
+      recognitionRef.current.continuous = true; // KEEPS LISTENING CONTINUOUSLY
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
 
@@ -153,7 +153,6 @@ const AuraAssistant: React.FC = () => {
         setTranscriptText(`"${transcript}"`);
 
         if (event.results[current].isFinal) {
-          // Trigger the command processing
           processCommand({
             cmd: transcript,
             auraDatabase: auraDatabase,
@@ -164,7 +163,7 @@ const AuraAssistant: React.FC = () => {
             stopMic: () => {
               setIsListening(false);
               isListeningRef.current = false;
-              recognitionRef.current?.stop();
+              try { recognitionRef.current?.stop(); } catch(e){}
               setStatusText("Aura Ready");
             }
           });
@@ -172,18 +171,40 @@ const AuraAssistant: React.FC = () => {
       };
 
       recognitionRef.current.onerror = (event: any) => {
-        if (event.error !== 'no-speech' && event.error !== 'aborted' && event.error !== 'audio-capture') {
-          setIsListening(false);
-          isListeningRef.current = false;
-          setStatusText("Error");
-          setTimeout(() => setStatusText("Aura Ready"), 2000);
+        console.error("Speech Recognition Error Details:", event.error);
+
+        // Ignore 'no-speech' so it doesn't turn off while waiting for you to talk
+        if (event.error === 'no-speech') return; 
+
+        setIsListening(false);
+        isListeningRef.current = false;
+
+        if (event.error === 'network') {
+          setStatusText("Network Error");
+          setTranscriptText('"Voice recognition requires an internet connection."');
+        } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setStatusText("Mic Blocked");
+          setTranscriptText('"Please allow microphone access."');
+        } else if (event.error === 'aborted' || event.error === 'audio-capture') {
+          setStatusText("Aura Ready");
+        } else {
+          setStatusText("Aura Ready");
+          setTranscriptText('"Voice input failed. Try again."');
         }
+
+        setTimeout(() => {
+          setStatusText("Aura Ready");
+          setTranscriptText('"What\'s the price of hoverboard..."');
+        }, 4000);
       };
 
       recognitionRef.current.onend = () => {
-        setIsListening(false);
-        isListeningRef.current = false;
-        setStatusText((prev) => prev === "Listening..." ? "Aura Ready" : prev);
+        // If the browser auto-stops but we haven't clicked "stop", instantly restart it
+        if (isListeningRef.current) {
+          try { recognitionRef.current.start(); } catch(e) {}
+        } else {
+          setStatusText((prev) => prev === "Listening..." ? "Aura Ready" : prev);
+        }
       };
     }
   }, [auraSpeak]);
@@ -196,11 +217,13 @@ const AuraAssistant: React.FC = () => {
     if (!recognitionRef.current) return alert("Speech recognition not supported.");
 
     if (isListeningRef.current) {
+      // Manually clicking the button to turn it OFF
       try { recognitionRef.current.stop(); } catch(e){}
       setIsListening(false);
       isListeningRef.current = false;
       setStatusText("Aura Ready");
     } else {
+      // Manually clicking the button to turn it ON
       try {
         recognitionRef.current.start();
         setIsListening(true);
@@ -209,6 +232,7 @@ const AuraAssistant: React.FC = () => {
         setTranscriptText('"..."');
       } catch(e) {
         console.error(e);
+        setStatusText("Aura Ready");
       }
     }
   }, []);
