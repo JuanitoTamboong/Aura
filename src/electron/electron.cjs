@@ -2,36 +2,31 @@
 const { app, BrowserWindow, session, shell } = require('electron');
 const path = require('path');
 
-// --- 1. GOOGLE CLOUD API CREDENTIALS ---
-// Replace these strings with the actual keys you copied from Google Cloud
-process.env.GOOGLE_API_KEY = 'YOUR_API_KEY_HERE';
-process.env.GOOGLE_DEFAULT_CLIENT_ID = 'REMOVED';
-process.env.GOOGLE_DEFAULT_CLIENT_SECRET = 'REMOVED';
-
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'), // Link the preload script
-      nodeIntegration: false, // Turn this OFF for security
-      contextIsolation: true, // Turn this ON for security
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false, 
+      contextIsolation: true, 
     },
   });
 
-  // --- 2. ALLOW MICROPHONE PERMISSIONS ---
+  // --- 1. ALLOW MICROPHONE PERMISSIONS ---
+  // Required for the Web Speech API to work in Electron
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     if (permission === 'media' || permission === 'mediaKeySystem') {
-      return callback(true); // Allow
+      return callback(true);
     }
-    return callback(false); // Deny everything else
+    return callback(false); 
   });
 
-  // --- 3. OPEN EXTERNAL LINKS IN DEFAULT BROWSER ---
-  // This intercepts window.open() calls and opens them in Chrome/Edge
+  // --- 2. OPEN EXTERNAL LINKS IN DEFAULT BROWSER ---
+  // When Aura says "Opening YouTube", this ensures it opens in Chrome, not a blank Electron window
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
-    return { action: 'deny' }; // Prevent Electron from opening a blank popup
+    return { action: 'deny' }; 
   });
 
   const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '../dist/index.html')}`;
