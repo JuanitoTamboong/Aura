@@ -21,7 +21,7 @@ import {
   FaTrash,
 } from "react-icons/fa6";
 
-import { FaRegBell, FaRegMoon } from "react-icons/fa";
+import { FaRegMoon } from "react-icons/fa";
 
 import "../css/AuraAssistant.css";
 import auraLogo from "../assets/images/Aura-Logo.png";
@@ -63,11 +63,12 @@ const AuraAssistant: React.FC = () => {
   const [activeNav, setActiveNav] = useState("home");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
+  
+  // Replaced showNotifications with showLogs
+  const [showLogs, setShowLogs] = useState(false);
   const [lightMode, setLightMode] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
   
-  // Embedded YouTube State
   const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -289,7 +290,7 @@ const AuraAssistant: React.FC = () => {
           setTranscriptText,
           setCommandDetails,
           auraSpeak,
-          setEmbeddedVideo, // Pass the embed setter to the command processor
+          setEmbeddedVideo,
           stopMic: () => {
             isListeningRef.current = false;
             setIsListening(false);
@@ -811,11 +812,11 @@ const AuraAssistant: React.FC = () => {
           <button
             type="button"
             className="aura-icon-button"
-            title="Notifications"
-            aria-label="Notifications"
-            onClick={() => setShowNotifications((value) => !value)}
+            title="System Logs"
+            aria-label="System Logs"
+            onClick={() => setShowLogs((value) => !value)}
           >
-            <FaRegBell />
+            <FaTerminal />
           </button>
 
           <button
@@ -840,19 +841,28 @@ const AuraAssistant: React.FC = () => {
         </div>
       </header>
 
-      {showNotifications && (
-        <div className="aura-notification">
-          <strong>System notifications</strong>
-          <p>
-            {pipOpen
-              ? "Floating Aura window is open."
-              : "No new notifications."}
-          </p>
+      {showLogs && (
+        <div className="aura-notification" style={{ top: '90px', right: '110px', width: '350px' }}>
+          <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontSize: '11px' }}>
+            <FaTerminal /> SYSTEM LOGS
+          </strong>
+          <div style={{ marginTop: '10px', fontSize: '12px', color: '#928bac', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+            <p>• Core initialisation successful.</p>
+            <p>• Speech recognition ready.</p>
+            <p>• Active session: local operator.</p>
+            {history.length > 0 && (
+              <p style={{ color: '#c4b5fd' }}>• Last command: "{history[0].command}"</p>
+            )}
+            {embeddedVideo && (
+              <p style={{ color: '#67e8f9' }}>• Embedded player active.</p>
+            )}
+          </div>
           <button
             type="button"
-            onClick={() => setShowNotifications(false)}
+            onClick={() => setShowLogs(false)}
+            style={{ marginTop: '12px' }}
           >
-            Dismiss
+            Close Logs
           </button>
         </div>
       )}
