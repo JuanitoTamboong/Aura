@@ -1,7 +1,13 @@
 // src/command/AuraCommand.tsx
 import { askAI } from '../api/aura-api';
+import {
+  addUserTurn,
+  addAssistantTurn,
+  clearConversation,
+  getConversationForPrompt,
+  hasRecentConversation,
+} from './AuraConversation';
 
-// Define the shape of the props we need to update the UI
 interface CommandProps {
   cmd: string;
   auraDatabase: any;
@@ -23,15 +29,16 @@ export const processCommand = async ({
 }: CommandProps) => {
   const lowerCmd = (cmd || "").toLowerCase().trim();
 
-  // 0. INSTANT STOP
+  // 0. INSTANT STOP — also wipes the conversational context.
   if (/\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/.test(lowerCmd)) {
     stopMic();
+    clearConversation();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-    
+
     setCommandDetails({ title: "Standing By", category: "Awaiting Command", match: "100%", type: "text", data: "I am listening. What would you like to do next?" });
     setTranscriptText(`"Stopped."`);
     setStatusText("Aura Ready");
-    return; 
+    return;
   }
 
   setStatusText("Aura Processing...");
@@ -41,15 +48,32 @@ export const processCommand = async ({
     return;
   }
 
+  // Helper so every local branch also updates the conversation memory.
+  const respond = (spoken: string, details: { title: string; category: string; match?: string; type?: string; data: any }) => {
+    addUserTurn(cmd);
+    addAssistantTurn(spoken);
+    setCommandDetails({
+      title: details.title,
+      category: details.category,
+      match: details.match ?? "100%",
+      type: details.type ?? "text",
+      data: details.data,
+    });
+    auraSpeak(spoken);
+    setStatusText("Aura Ready");
+  };
+
   // 1. CHECK DATABASE
   if (auraDatabase && auraDatabase.commands) {
     for (const key in auraDatabase.commands) {
       const pattern = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
       if (pattern.test(lowerCmd)) {
         const dbCommand = auraDatabase.commands[key];
-        setCommandDetails({ title: dbCommand.title, category: dbCommand.category, match: "100%", type: "text", data: dbCommand.speak });
-        auraSpeak(dbCommand.speak);
-        setStatusText("Aura Ready");
+        respond(dbCommand.speak, {
+          title: dbCommand.title,
+          category: dbCommand.category,
+          data: dbCommand.speak,
+        });
         return;
       }
     }
@@ -58,8 +82,11 @@ export const processCommand = async ({
   // 2. CLOSE / TAB MANAGEMENT
   if (/\b(close|quit|exit|shut)\b/.test(lowerCmd) && /\b(window|tab|this|yourself|aura|app|dashboard)\b/.test(lowerCmd)) {
     const msg = "Attempting to close this window. If nothing happens, please click the X button.";
-    setCommandDetails({ title: "Close Window", category: "System Control", match: "100%", type: "text", data: msg });
-    auraSpeak("Closing this window now.");
+    respond("Closing this window now.", {
+      title: "Close Window",
+      category: "System Control",
+      data: msg,
+    });
     setTimeout(() => {
       try { window.close(); } catch (e) { /* ignore */ }
     }, 1200);
@@ -70,18 +97,22 @@ export const processCommand = async ({
   if (/\btime\b/.test(lowerCmd) && !/\b(youtube|play|video|song|music)\b/.test(lowerCmd)) {
     const now = new Date();
     const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const msg = `It is currently ${timeString}.`;
-    setCommandDetails({ title: "Current Time", category: "System Info", match: "100%", type: "text", data: msg });
-    auraSpeak(msg);
+    respond(`It is currently ${timeString}.`, {
+      title: "Current Time",
+      category: "System Info",
+      data: `It is currently ${timeString}.`,
+    });
     return;
   }
 
   if (/\bdate\b/.test(lowerCmd) || lowerCmd.includes('day is it today')) {
     const now = new Date();
     const dateString = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const msg = `Today is ${dateString}.`;
-    setCommandDetails({ title: "Today's Date", category: "System Info", match: "100%", type: "text", data: msg });
-    auraSpeak(msg);
+    respond(`Today is ${dateString}.`, {
+      title: "Today's Date",
+      category: "System Info",
+      data: `Today is ${dateString}.`,
+    });
     return;
   }
 
@@ -99,15 +130,23 @@ export const processCommand = async ({
 
     if (query.length === 0 || query === 'youtube' || query === 'music') {
       const vids = [{ title: "YouTube Home", query: "youtube", img: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=120&q=80" }];
-      setCommandDetails({ title: "YouTube", category: "Video Streaming", match: "100%", type: "video", data: vids });
-      auraSpeak("Opening YouTube.");
+      respond("Opening YouTube.", {
+        title: "YouTube",
+        category: "Video Streaming",
+        type: "video",
+        data: vids,
+      });
       window.open("https://www.youtube.com", "_blank");
       return;
     }
 
-    const vids = [{ title: `Search: ${query}`, query: query, img: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=120&q=80" }];
-    setCommandDetails({ title: `YouTube: ${query}`, category: "Music / Video Search", match: "100%", type: "video", data: vids });
-    auraSpeak(`Searching YouTube for ${query}.`);
+    const vids = [{ title: `Search: ${query}`, query, img: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=120&q=80" }];
+    respond(`Searching YouTube for ${query}.`, {
+      title: `YouTube: ${query}`,
+      category: "Music / Video Search",
+      type: "video",
+      data: vids,
+    });
     window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%253D%253D`, "_blank");
     return;
   }
@@ -122,9 +161,11 @@ export const processCommand = async ({
       .trim();
 
     if (query.length > 0) {
-      const msg = `Searching Google for: ${query}`;
-      setCommandDetails({ title: `Google: ${query}`, category: "Web Search", match: "100%", type: "text", data: msg });
-      auraSpeak(`Searching Google for ${query}`);
+      respond(`Searching Google for ${query}`, {
+        title: `Google: ${query}`,
+        category: "Web Search",
+        data: `Searching Google for: ${query}`,
+      });
       window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, "_blank");
       return;
     }
@@ -140,8 +181,11 @@ export const processCommand = async ({
   
   for (const site in siteMap) {
     if (new RegExp(`\\b${site.replace(/ /g, '\\s')}\\b`).test(lowerCmd)) {
-      setCommandDetails({ title: site.toUpperCase(), category: "Quick Open", match: "100%", type: "text", data: `Opening ${site}...` });
-      auraSpeak(`Opening ${site}`);
+      respond(`Opening ${site}`, {
+        title: site.toUpperCase(),
+        category: "Quick Open",
+        data: `Opening ${site}...`,
+      });
       window.open(siteMap[site], "_blank");
       return;
     }
@@ -151,27 +195,36 @@ export const processCommand = async ({
   setCommandDetails({ title: cmd.toUpperCase(), category: "AI Knowledge", match: "...", type: "text", data: "Thinking..." });
 
   try {
-    // NEW: Check if the user mentioned a zip code
-    const zipMatch = lowerCmd.match(/\b\d{4,5}\b/); 
-    let enhancedPrompt = lowerCmd;
+    const history = getConversationForPrompt();
+    const continuing = hasRecentConversation();
 
-    // NEW: Inject context so the AI knows what the zip code is for
-    if (/\b(weather|forecast|temperature|rain|sunny)\b/.test(lowerCmd)) {
-      if (zipMatch) {
-        enhancedPrompt = `The user is asking about the weather for the zip code ${zipMatch[0]}. Provide a helpful response acknowledging that zip code.`;
-      } else {
-        enhancedPrompt = `The user is asking about the weather. Tell them to provide a city or zip code so you can help them.`;
-      }
-    } else if (zipMatch) {
-       enhancedPrompt = `The user just provided the zip code ${zipMatch[0]}. Ask them what they would like to know about this location (e.g., weather, stores, etc.).`;
+    // We let the AI figure out the context from the history!
+    let promptWithContext = "";
+
+    if (history) {
+      promptWithContext = 
+        `You are Aura, a voice assistant. Continue the conversation naturally based on the recent history. ` +
+        `Answer the new user message directly in a short, spoken-friendly way. Do not ask for clarification if the history already provides the context.\n\n` +
+        `--- Recent conversation ---\n${history}\n--- End of conversation ---\n\n` +
+        `User: ${lowerCmd}\nAura:`;
+    } else {
+      promptWithContext = lowerCmd;
     }
 
-    // Send the enhanced prompt to the AI
-    const reply = await askAI(enhancedPrompt);
+    const reply = await askAI(promptWithContext);
     const safeReply = (reply && reply.trim()) ? reply.trim() : "I couldn't find information on that topic.";
-    
+
+    addUserTurn(cmd);
+    addAssistantTurn(safeReply);
+
     setStatusText("Aura Ready");
-    setCommandDetails({ title: cmd.toUpperCase(), category: "AI Knowledge", match: "100%", type: "text", data: safeReply });
+    setCommandDetails({ 
+      title: cmd.toUpperCase(), 
+      category: continuing ? "Conversation Follow-up" : "AI Knowledge", 
+      match: "100%", 
+      type: "text", 
+      data: safeReply 
+    });
     auraSpeak(safeReply);
   } catch (error: any) {
     setStatusText("Aura Ready");
