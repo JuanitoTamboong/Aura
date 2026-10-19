@@ -27,6 +27,7 @@ import "../css/AuraAssistant.css";
 import auraLogo from "../assets/images/Aura-Logo.png";
 import auraDatabase from "../database/aura.json";
 import { processCommand } from "../command/AuraCommand";
+import { clearConversation } from "../command/AuraConversation"; // Import the clear function
 
 interface CommandDetails {
   title: string;
@@ -181,7 +182,6 @@ const AuraAssistant: React.FC = () => {
 
         ctx.shadowBlur = 0;
 
-        // Inner orbital rings.
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(phase * 0.18);
@@ -388,7 +388,6 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
-        // Restart if the browser automatically ends a listening session.
         try {
           recognition.start();
         } catch {
@@ -451,7 +450,7 @@ const AuraAssistant: React.FC = () => {
   }, []);
 
   // ---------------------------------------------------------
-  // PICTURE-IN-PICTURE  (fixed: top logo removed, orb centered)
+  // PICTURE-IN-PICTURE
   // ---------------------------------------------------------
 
   const handlePopOut = useCallback(async () => {
@@ -474,7 +473,6 @@ const AuraAssistant: React.FC = () => {
 
       pipWindowRef.current = pipWindow;
 
-      // Copy accessible stylesheets to the PiP document.
       [...document.styleSheets].forEach((sheet) => {
         try {
           const css = [...sheet.cssRules]
@@ -720,6 +718,7 @@ const AuraAssistant: React.FC = () => {
   const clearHistory = () => {
     setHistory([]);
     setSearchQuery("");
+    clearConversation(); // Wipes the memory in AuraConversation.ts
   };
 
   const renderResult = () => {
@@ -752,7 +751,7 @@ const AuraAssistant: React.FC = () => {
               const query = video.query || video.title;
               if (query) {
                 window.open(
-                  `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+                  `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&autoplay=1`,
                   "_blank",
                   "noopener,noreferrer"
                 );
