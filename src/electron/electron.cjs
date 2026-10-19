@@ -1,7 +1,13 @@
-
 const { app, BrowserWindow, session, shell } = require("electron");
 const path = require("path");
-const { pathToFileURL } = require("url");
+const dotenv = require("dotenv"); // ADDED
+
+// ADDED: Load .env from root in dev, and from resources folder in production .exe
+dotenv.config({
+  path: app.isPackaged
+    ? path.join(process.resourcesPath, ".env")
+    : path.resolve(process.cwd(), ".env"),
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -57,8 +63,9 @@ function createWindow() {
   if (devUrl) {
     win.loadURL(devUrl).catch(console.error);
   } else {
-    const indexPath = path.join(__dirname, "../dist/index.html");
-    win.loadURL(pathToFileURL(indexPath).href).catch(console.error);
+    // FIXED: Use app.getAppPath() to correctly find the dist folder inside the .exe
+    const indexPath = path.join(app.getAppPath(), "dist/index.html");
+    win.loadFile(indexPath).catch(console.error); 
   }
 
   // Developer Tools open only when explicitly requested.

@@ -27,7 +27,7 @@ import "../css/AuraAssistant.css";
 import auraLogo from "../assets/images/Aura-Logo.png";
 import auraDatabase from "../database/aura.json";
 import { processCommand } from "../command/AuraCommand";
-import { clearConversation } from "../command/AuraConversation"; // Import the clear function
+import { clearConversation } from "../command/AuraConversation";
 
 interface CommandDetails {
   title: string;
@@ -66,6 +66,9 @@ const AuraAssistant: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [lightMode, setLightMode] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
+  
+  // Embedded YouTube State
+  const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -286,6 +289,7 @@ const AuraAssistant: React.FC = () => {
           setTranscriptText,
           setCommandDetails,
           auraSpeak,
+          setEmbeddedVideo, // Pass the embed setter to the command processor
           stopMic: () => {
             isListeningRef.current = false;
             setIsListening(false);
@@ -718,7 +722,7 @@ const AuraAssistant: React.FC = () => {
   const clearHistory = () => {
     setHistory([]);
     setSearchQuery("");
-    clearConversation(); // Wipes the memory in AuraConversation.ts
+    clearConversation();
   };
 
   const renderResult = () => {
@@ -746,14 +750,12 @@ const AuraAssistant: React.FC = () => {
           <button
             type="button"
             className="aura-icon-button"
-            aria-label={`Search YouTube for ${video.title || "video"}`}
+            aria-label={`Play ${video.title || "video"}`}
             onClick={() => {
               const query = video.query || video.title;
               if (query) {
-                window.open(
-                  `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&autoplay=1`,
-                  "_blank",
-                  "noopener,noreferrer"
+                setEmbeddedVideo(
+                  `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1`
                 );
               }
             }}
@@ -1009,6 +1011,31 @@ const AuraAssistant: React.FC = () => {
               </p>
             </div>
           </div>
+
+          {/* EMBEDDED YOUTUBE PLAYER */}
+          {embeddedVideo && (
+            <div className="aura-embed">
+              <div className="aura-embed-header">
+                <span className="aura-live-dot" />
+                <span>EMBEDDED PLAYER</span>
+                <button
+                  type="button"
+                  className="aura-embed-close"
+                  onClick={() => setEmbeddedVideo(null)}
+                >
+                  CLOSE
+                </button>
+              </div>
+              <div className="aura-embed-frame">
+                <iframe
+                  src={embeddedVideo}
+                  title="Aura Embedded Player"
+                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          )}
 
           <nav className="aura-dock" aria-label="Main navigation">
             {[

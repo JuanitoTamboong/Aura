@@ -5,4 +5,5 @@ import tailwindcss from '@tailwindcss/vite' // 1. Import the Tailwind plugin
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()], // 2. Add tailwindcss() to the plugins array
+  base: './', // 3. ADD THIS LINE (Crucial for Electron production builds)
 })

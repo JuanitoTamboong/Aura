@@ -13,9 +13,24 @@
     "start": "concurrently \"npm run dev\" \"npm run electron\"",
     "dist": "npm run build && electron-builder"
   },
+  "build": {
+    "appId": "com.aura.ai",
+    "productName": "Aura AI",
+    "files": [
+      "dist/**/*",
+      "src/electron/**/*"
+    ],
+    "extraResources": [
+      ".env"
+    ],
+    "win": {
+      "target": "dir"
+    }
+  },
   "dependencies": {
     "@google/genai": "^2.30.0",
     "@tailwindcss/vite": "^4.3.3",
+    "dotenv": "^18.0.8",
     "groq-sdk": "^1.6.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

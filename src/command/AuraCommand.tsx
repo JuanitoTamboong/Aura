@@ -24,6 +24,7 @@ interface CommandProps {
   setCommandDetails: (details: CommandDetails) => void;
   auraSpeak: (text: string) => void | Promise<void>;
   stopMic: () => void;
+  setEmbeddedVideo?: (url: string | null) => void;
 }
 
 export const processCommand = async ({
@@ -33,7 +34,8 @@ export const processCommand = async ({
   setTranscriptText,
   setCommandDetails,
   auraSpeak,
-  stopMic
+  stopMic,
+  setEmbeddedVideo,
 }: CommandProps): Promise<string> => {
   
   const originalCommand = (cmd || "").trim();
@@ -47,8 +49,9 @@ export const processCommand = async ({
   // 0. INSTANT STOP
   if (/\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/.test(lowerCmd)) {
     stopMic();
-    clearConversation(); // Wipe memory
+    clearConversation();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setEmbeddedVideo?.(null);
 
     const stopMsg = "I am listening. What would you like to do next?";
     setCommandDetails({ title: "Standing By", category: "Awaiting Command", match: "100%", type: "text", data: stopMsg });
@@ -63,13 +66,12 @@ export const processCommand = async ({
   const text = command || originalCommand;
   const normalized = text.toLowerCase();
 
-  // Helper to update UI, speak, and save to YOUR memory file
   const respond = async (
     spoken: string, 
     details: { title: string; category: string; match?: string; type?: string; data: any }
   ): Promise<string> => {
-    addUserTurn(originalCommand);      // Save user input
-    addAssistantTurn(spoken);          // Save Aura's response
+    addUserTurn(originalCommand);
+    addAssistantTurn(spoken);
     
     setCommandDetails({
       title: details.title,
@@ -84,7 +86,37 @@ export const processCommand = async ({
     return spoken;
   };
 
+  // NEW: Secure Official YouTube API Search
+  const searchYouTube = async (query: string) => {
+    const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+    if (!apiKey) throw new Error("Missing YouTube API key");
+
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${apiKey}`
+    );
+    if (!res.ok) throw new Error("Search failed");
+    const data = await res.json();
+    
+    if (data.items && data.items.length > 0) {
+      return { 
+        id: data.items[0].id.videoId, 
+        title: data.items[0].snippet.title 
+      };
+    }
+    return null;
+  };
+
   try {
+    // CLOSE EMBEDDED PLAYER
+    if (/\b(close|hide|exit|dismiss)\b/.test(normalized) && /\b(video|player|it|youtube|that)\b/.test(normalized)) {
+      setEmbeddedVideo?.(null);
+      return await respond("Closing the video player.", {
+        title: "Player Closed",
+        category: "System Control",
+        data: "Embedded player hidden.",
+      });
+    }
+
     // 1. CHECK DATABASE
     if (auraDatabase?.commands) {
       for (const key in auraDatabase.commands) {
@@ -101,7 +133,7 @@ export const processCommand = async ({
     }
 
     // 2. CLOSE WINDOW
-    if (/\b(close|quit|exit|shut)\b/.test(normalized) && /\b(window|tab|this|yourself|aura|app|dashboard)\b/.test(normalized)) {
+    if (/\b(close|quit|exit|shut)\b/.test(normalized) && /\b(window|tab|yourself|aura|app|dashboard)\b/.test(normalized)) {
       const msg = await respond("Closing this window now.", {
         title: "Close Window",
         category: "System Control",
@@ -134,44 +166,67 @@ export const processCommand = async ({
       });
     }
 
-    // 4. YOUTUBE (UPDATED TO IGNORE "PLAY IT")
+    // 4. YOUTUBE — Official API Search
     if (/\b(youtube|play|music|song|video)\b/.test(normalized)) {
+
+      const isJustOpenYouTube =
+        /^(go\s*to\s+youtube|open\s+youtube|youtube|launch\s+youtube|show\s+(me\s+)?youtube)$/i.test(normalized);
+
+      const isContextualFollowUp =
+        /^(it|that|this|the\s+video|the\s+song|that\s+song|that\s+video|it\s+play\s+it|it\s+it|play\s+it\s+play\s+it|play\s+it\s+it|play\s+it)$/i.test(normalized.trim());
+
       let query = normalized
-        .replace(/\b(can you|please|could you|would you|i want to|i wanna|let me)\b/g, '')
-        .replace(/\b(play|listen to|watch|open)\b/g, '')
+        .replace(/\b(can you|could you|would you|please|i want to|i wanna|let me)\b/g, '')
+        .replace(/\b(go\s*to|goto|launch)\b/g, '')
         .replace(/\b(on|in|at|from)\s+youtube\b/g, '')
         .replace(/\byoutube\b/g, '')
         .replace(/\b(type it in|type|it in|search for|look for)\b/g, '')
-        .replace(/\b(music|song|video|for me|for)\b/g, '')
+        .replace(/\b(and|then|now|for me|for)\b/g, '')
+        .replace(/\b(play it|play|listen to|watch|open)\b/g, '')
+        .replace(/\bit\b/g, '')
+        .replace(/\b(music|song|video)\b/g, '')
         .replace(/\s+/g, ' ')
         .trim();
 
-      // FIXED: Use a broad regex to catch "it", "it play it", "play it play it", etc.
-      const isContextualFollowUp = /^(it|that|this|the video|the song|that song|that video|it play it|it it|play it play it|play it it)$/i.test(query) || query.length < 4;
-
-      if (!isContextualFollowUp) {
-        if (query.length === 0 || query === 'youtube' || query === 'music') {
-          const vids = [{ title: "YouTube Home", query: "youtube", img: "https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg" }];
-          const msg = await respond("Opening YouTube.", {
-            title: "YouTube",
-            category: "Video Streaming",
-            type: "video",
-            data: vids,
-          });
-          window.open("https://www.youtube.com", "_blank");
-          return msg;
-        }
-
-        const vids = [{ title: `Search: ${query}`, query, img: "https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg" }];
-        const msg = await respond(`Searching YouTube for ${query}.`, {
-          title: `YouTube: ${query}`,
-          category: "Music / Video Search",
-          type: "video",
-          data: vids,
+      // Case A: "go to youtube" -> Loads a standard video
+      if (isJustOpenYouTube) {
+        setEmbeddedVideo?.("https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1");
+        return await respond("YouTube is open inside Aura.", {
+          title: "YouTube",
+          category: "Video Streaming",
+          data: "Say a song name to play it here.",
         });
+      }
+
+      // Case B: Search using the API
+      if (!isContextualFollowUp && query.length > 0) {
+        setStatusText("SEARCHING YOUTUBE...");
         
-        window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&autoplay=1`, "_blank");
-        return msg;
+        try {
+          const result = await searchYouTube(query);
+          
+          if (result) {
+            setEmbeddedVideo?.(`https://www.youtube.com/embed/${result.id}?autoplay=1`);
+            return await respond(`Playing ${result.title} inside Aura.`, {
+              title: `YouTube: ${query}`,
+              category: "Music / Video Search",
+              data: result.title,
+            });
+          } else {
+            return await respond(`I couldn't find any videos for ${query}.`, {
+              title: "Not Found",
+              category: "Error",
+              data: "No results found.",
+            });
+          }
+        } catch (err: any) {
+          console.error("YouTube Search Error:", err);
+          return await respond(`I had trouble searching YouTube for ${query}. Make sure your API key is valid.`, {
+            title: "Error",
+            category: "System",
+            data: err.message || "YouTube search failed.",
+          });
+        }
       }
     }
 
@@ -215,7 +270,7 @@ export const processCommand = async ({
       }
     }
 
-    // 7. AI FALLBACK WITH CONVERSATION MEMORY
+    // 7. AI FALLBACK
     setCommandDetails({ title: text.toUpperCase(), category: "AI Knowledge", match: "...", type: "text", data: "Thinking..." });
 
     const history = getConversationForPrompt(); 
@@ -223,7 +278,6 @@ export const processCommand = async ({
     
     let enhancedPrompt = text;
 
-    // If user says "play it" or similar, tell the AI to only output the song name
     if (/\b(play|open)\b/i.test(normalized) && /\b(it|this|that|song|video)\b/i.test(normalized)) {
        enhancedPrompt = `${text}. Reply with ONLY the exact name of the song or video they are referring to in the history. Do not add any other words.`;
     }
@@ -242,25 +296,32 @@ export const processCommand = async ({
     const reply = await askAI(promptWithContext);
     let safeReply = (reply && reply.trim()) ? reply.trim() : "I couldn't find information on that topic.";
 
-    // If user said "play it", use the AI's context to open YouTube!
+    // AI Fallback for "play it" (uses YouTube API)
     if (/\b(play|open)\b/i.test(normalized) && /\b(it|this|that|song|video)\b/i.test(normalized)) {
-      // Clean up the reply just in case the AI added punctuation
       const songName = safeReply.replace(/["*]/g, '').trim(); 
       
-      window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(songName)}&autoplay=1`, "_blank");
-      
-      const msg = `Playing ${songName} on YouTube.`;
-      setCommandDetails({ title: `YouTube: ${songName}`, category: "Music / Video Search", match: "100%", type: "text", data: msg });
-      
-      addUserTurn(originalCommand);
-      addAssistantTurn(msg);
-      
-      setStatusText("SYSTEM ONLINE");
-      await Promise.resolve(auraSpeak(msg));
-      return msg;
+      try {
+        setStatusText("SEARCHING YOUTUBE...");
+        const result = await searchYouTube(songName);
+        
+        if (result) {
+          setEmbeddedVideo?.(`https://www.youtube.com/embed/${result.id}?autoplay=1`);
+          
+          const msg = `Playing ${songName} inside Aura.`;
+          setCommandDetails({ title: `YouTube: ${songName}`, category: "Music / Video Search", match: "100%", type: "text", data: msg });
+          
+          addUserTurn(originalCommand);
+          addAssistantTurn(msg);
+          
+          setStatusText("SYSTEM ONLINE");
+          await Promise.resolve(auraSpeak(msg));
+          return msg;
+        }
+      } catch (err) {
+         console.error("YT API Error:", err);
+      }
     }
 
-    // Save to memory and display
     addUserTurn(originalCommand);
     addAssistantTurn(safeReply);
 
