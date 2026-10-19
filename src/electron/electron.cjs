@@ -1,47 +1,96 @@
-// electron/electron.cjs
-const { app, BrowserWindow, session, shell } = require('electron');
-const path = require('path');
+
+const { app, BrowserWindow, session, shell } = require("electron");
+const path = require("path");
+const { pathToFileURL } = require("url");
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1280,
+    height: 900,
+    minWidth: 900,
+    minHeight: 650,
+    center: true,
+    autoHideMenuBar: true,
+    backgroundColor: "#080713",
+    show: false,
+
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      nodeIntegration: false, 
-      contextIsolation: true, 
+      preload: path.join(__dirname, "preload.cjs"),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
     },
   });
 
-  // --- 1. ALLOW MICROPHONE PERMISSIONS ---
-  // Required for the Web Speech API to work in Electron
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'media' || permission === 'mediaKeySystem') {
-      return callback(true);
+  // Display the window only after it is ready.
+  win.once("ready-to-show", () => {
+    win.show();
+  });
+
+  // Allow microphone and media permissions.
+  const ses = win.webContents.session;
+
+  ses.setPermissionCheckHandler(
+    (_webContents, permission) => {
+      return permission === "media";
     }
-    return callback(false); 
-  });
+  );
 
-  // --- 2. OPEN EXTERNAL LINKS IN DEFAULT BROWSER ---
-  // When Aura says "Opening YouTube", this ensures it opens in Chrome, not a blank Electron window
+  ses.setPermissionRequestHandler(
+    (_webContents, permission, callback) => {
+      callback(permission === "media");
+    }
+  );
+
+  // Open external websites in the default browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: 'deny' }; 
+    if (url.startsWith("https://") || url.startsWith("http://")) {
+      shell.openExternal(url);
+    }
+
+    return { action: "deny" };
   });
 
-  const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '../dist/index.html')}`;
-  
-  win.loadURL(startUrl);
-  
-  if (process.env.ELECTRON_START_URL) {
-    win.webContents.openDevTools();
+  // Load the Vite development server or production build.
+  const devUrl = process.env.ELECTRON_START_URL;
+
+  if (devUrl) {
+    win.loadURL(devUrl).catch(console.error);
+  } else {
+    const indexPath = path.join(__dirname, "../dist/index.html");
+    win.loadURL(pathToFileURL(indexPath).href).catch(console.error);
   }
+
+  // Developer Tools open only when explicitly requested.
+  if (process.env.OPEN_DEVTOOLS === "true") {
+    win.webContents.openDevTools({ mode: "detach" });
+  }
+
+  // Optional keyboard shortcut for opening DevTools.
+  win.webContents.on("before-input-event", (event, input) => {
+    if (
+      input.type === "keyDown" &&
+      input.key === "F12"
+    ) {
+      win.webContents.toggleDevTools();
+    }
+  });
+
+  return win;
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });

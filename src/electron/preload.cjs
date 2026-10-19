@@ -1,16 +1,26 @@
-// electron/preload.cjs
-const { contextBridge } = require('electron');
 
-// This exposes a safe "api" object to your React code (window.electronAPI)
-contextBridge.exposeInMainWorld('electronAPI', {
-  // You can add native functions here later
+const { contextBridge } = require("electron");
+
+contextBridge.exposeInMainWorld("electronAPI", {
   showNotification: (title, body) => {
-    new Notification(title, { body });
+    if (typeof title !== "string" || typeof body !== "string") {
+      return false;
+    }
+
+    if (!("Notification" in window)) {
+      return false;
+    }
+
+    if (Notification.permission === "granted") {
+      new Notification(title, { body });
+      return true;
+    }
+
+    return false;
   },
-  getSystemInfo: () => {
-    return {
-      platform: process.platform,
-      arch: process.arch,
-    };
-  }
+
+  getSystemInfo: () => ({
+    platform: process.platform,
+    arch: process.arch,
+  }),
 });
