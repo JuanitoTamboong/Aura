@@ -9,16 +9,25 @@ export const askAI = async (prompt: string): Promise<string> => {
   try {
     const chatCompletion = await groq.chat.completions.create({
       messages: [
-        { role: "system", content: "You are Aura, a futuristic, helpful, and slightly sassy AI voice assistant created by Juanito Tamboong. Keep your answers helpful, detailed, and conversational, but concise (under 3 sentences)." },
+        { 
+          role: "system", 
+          content: "You are Aura, a futuristic, helpful, and slightly sassy AI voice assistant created by Juanito Tamboong. Keep your answers helpful, detailed, and conversational, but concise (under 3 sentences)." 
+        },
         { role: "user", content: prompt }
       ],
-    model: "openai/gpt-oss-20b",
+      // FIX 1: Use a valid Groq model (Llama 3 is excellent and fast)
+   model: "openai/gpt-oss-20b",
       temperature: 0.7,
       max_tokens: 150,
     });
     return chatCompletion.choices[0]?.message?.content || "I didn't catch that.";
   } catch (error: any) {
-    console.error("🔥 Groq API Error:", error);
-    throw new Error("My AI brain is currently offline. Please check your internet connection or API key.");
+    console.error("🔥 Groq API Error Details:", error);
+    
+    // FIX 2: Return the actual error so you can see it in the UI
+    if (error.status === 401) {
+      return "My API key is invalid. Please check the .env file.";
+    }
+    return `System Error: ${error.message || "My AI brain is currently offline."}`;
   }
 };

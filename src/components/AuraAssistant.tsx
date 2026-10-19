@@ -1,27 +1,32 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { 
-  FaUpRightFromSquare, FaStar, 
-  FaClockRotateLeft, FaArrowDown, FaMicrophone, 
-  FaHouse, FaMagnifyingGlass, FaLayerGroup, FaFolder,
-  FaLocationDot, FaPlay 
-} from 'react-icons/fa6';
-import { FaRegBell, FaRegMoon } from 'react-icons/fa'; 
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+} from "react";
 
-import '../css/AuraAssistant.css';
-import auraLogo from '../assets/images/Aura-Logo.png';
-import auraDatabase from '../database/aura.json';
-import { processCommand } from '../command/AuraCommand';
+import {
+  FaUpRightFromSquare,
+  FaClockRotateLeft,
+  FaMicrophone,
+  FaHouse,
+  FaMagnifyingGlass,
+  FaLayerGroup,
+  FaFolder,
+  FaPlay,
+  FaStop,
+  FaTerminal,
+  FaBolt,
+  FaArrowRight,
+  FaTrash,
+} from "react-icons/fa6";
 
-const initialHistory = [
-  { title: "WEATHER", percentage: 62 },
-  { title: "MEDICAL EQUIPMENT", percentage: 48 },
-  { title: "TRAFFIC SIGNALS", percentage: 84 },
-  { title: "DATA RECOGNITION", percentage: 56 },
-  { title: "ALARM", percentage: 39 },
-  { title: "FACTS", percentage: 72 },
-  { title: "MOVIES", percentage: 45 },
-  { title: "CARTOONS", percentage: 88 },
-];
+import { FaRegBell, FaRegMoon } from "react-icons/fa";
+
+import "../css/AuraAssistant.css";
+import auraLogo from "../assets/images/Aura-Logo.png";
+import auraDatabase from "../database/aura.json";
+import { processCommand } from "../command/AuraCommand";
 
 interface CommandDetails {
   title: string;
@@ -31,490 +36,1089 @@ interface CommandDetails {
   data: any;
 }
 
+interface HistoryItem {
+  id: number;
+  command: string;
+  timestamp: string;
+}
+
+const INITIAL_DETAILS: CommandDetails = {
+  title: "Aura Core",
+  category: "Voice Assistant",
+  match: "READY",
+  type: "text",
+  data: "Your command results will appear here.",
+};
+
 const AuraAssistant: React.FC = () => {
-  const [isListening, setIsListening] = useState<boolean>(false);
-  const [statusText, setStatusText] = useState<string>("Aura Ready");
-  const [transcriptText, setTranscriptText] = useState<string>('"What\'s the price of hoverboard..."');
-  const [commandDetails, setCommandDetails] = useState<CommandDetails>({
-    title: "Hover Board",
-    category: "Personal Transporter",
-    match: "92.8%",
-    type: "text",
-    data: "Awaiting your command..."
-  });
-  
+  const [isListening, setIsListening] = useState(false);
+  const [statusText, setStatusText] = useState("SYSTEM ONLINE");
+  const [transcriptText, setTranscriptText] = useState(
+    "Awaiting your command, operator."
+  );
+  const [commandDetails, setCommandDetails] =
+    useState<CommandDetails>(INITIAL_DETAILS);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [activeNav, setActiveNav] = useState("home");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [lightMode, setLightMode] = useState(false);
+  const [pipOpen, setPipOpen] = useState(false);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const recognitionRef = useRef<any>(null);
-  const isListeningRef = useRef<boolean>(false);
-  
+  const isListeningRef = useRef(false);
+  const historyIdRef = useRef(0);
   const centerContentRef = useRef<HTMLDivElement | null>(null);
   const centerPlaceholderRef = useRef<HTMLDivElement | null>(null);
-  
   const mainAnimationRef = useRef<number>(0);
   const pipAnimationRef = useRef<number>(0);
+  const pipWindowRef = useRef<Window | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
 
-  // --- 1. Particle Wave Animation ---
-  const startAnimation = useCallback((canvas: HTMLCanvasElement, animRef: React.MutableRefObject<number>, win: any = window) => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let wavePhase = 0;
-
-    const resize = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-    };
-    win.addEventListener('resize', resize);
-    resize();
-
-    const drawParticleWave = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const particleCount = 180;
-      const radius = Math.min(canvas.width, canvas.height) * 0.3; 
-
-      wavePhase += isListeningRef.current ? 0.08 : 0.02;
-
-      for (let i = 0; i < particleCount; i++) {
-        const angle = (i / particleCount) * Math.PI * 2;
-        const amp = isListeningRef.current ? 25 : 8;
-        const waveOffset = Math.sin(angle * 6 + wavePhase) * Math.cos(angle * 4 + wavePhase) * amp;
-        
-        const r = radius + waveOffset;
-        const x = centerX + r * Math.cos(angle);
-        const y = centerY + r * Math.sin(angle);
-
-        const size = isListeningRef.current ? Math.random() * 2.5 + 1 : 1.5;
-        const colorRatio = i / particleCount;
-        
-        ctx.fillStyle = colorRatio > 0.5 
-          ? `rgba(0, 240, 255, ${0.4 + Math.random() * 0.4})` 
-          : `rgba(168, 85, 247, ${0.4 + Math.random() * 0.4})`;
-
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      
-      animRef.current = requestAnimationFrame(drawParticleWave);
-    };
-
-    drawParticleWave();
-
+  useEffect(() => {
     return () => {
-      cancelAnimationFrame(animRef.current);
-      win.removeEventListener('resize', resize);
+      mountedRef.current = false;
+      isListeningRef.current = false;
+
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // Recognition may already be stopped.
+      }
+
+      window.speechSynthesis?.cancel();
+      cancelAnimationFrame(mainAnimationRef.current);
+      cancelAnimationFrame(pipAnimationRef.current);
     };
   }, []);
+
+  // ---------------------------------------------------------
+  // PARTICLE ORB
+  // ---------------------------------------------------------
+
+  const startAnimation = useCallback(
+    (
+      canvas: HTMLCanvasElement,
+      animRef: React.MutableRefObject<number>,
+      targetWindow: Window = window
+    ) => {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return () => {};
+
+      let phase = 0;
+      let width = 0;
+      let height = 0;
+      let frame = 0;
+      let disposed = false;
+
+      const particles = Array.from({ length: 240 }, (_, i) => ({
+        angle: (i / 240) * Math.PI * 2,
+        size: 0.8 + Math.random() * 1.4,
+        speed: 0.7 + Math.random() * 0.6,
+        offset: Math.random() * Math.PI * 2,
+        color: i % 2 === 0 ? "cyan" : "violet",
+      }));
+
+      const resize = () => {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = Math.min(targetWindow.devicePixelRatio || 1, 2);
+
+        width = rect.width;
+        height = rect.height;
+
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      };
+
+      const draw = () => {
+        if (disposed) return;
+
+        ctx.clearRect(0, 0, width, height);
+
+        const cx = width / 2;
+        const cy = height / 2;
+        const radius = Math.min(width, height) * 0.32;
+        const active = isListeningRef.current;
+
+        phase += active ? 0.045 : 0.012;
+
+        particles.forEach((particle, i) => {
+          const amplitude = active ? 20 : 7;
+
+          const wave =
+            Math.sin(particle.angle * 5 + phase * particle.speed) *
+            Math.cos(particle.angle * 3 - phase + particle.offset) *
+            amplitude;
+
+          const orbit = radius + wave;
+          const x = cx + Math.cos(particle.angle) * orbit;
+          const y = cy + Math.sin(particle.angle) * orbit;
+
+          const pulse = 0.65 + 0.35 * Math.sin(phase + i * 0.13);
+          const size = particle.size * (active ? 1.2 : 0.85);
+
+          ctx.beginPath();
+          ctx.fillStyle =
+            particle.color === "cyan"
+              ? `rgba(80, 210, 255, ${pulse})`
+              : `rgba(167, 110, 255, ${pulse})`;
+
+          ctx.shadowBlur = active ? 12 : 5;
+          ctx.shadowColor =
+            particle.color === "cyan" ? "#22d3ee" : "#8b5cf6";
+
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        ctx.shadowBlur = 0;
+
+        // Inner orbital rings.
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(phase * 0.18);
+
+        [0.39, 0.44].forEach((factor, index) => {
+          ctx.beginPath();
+          ctx.ellipse(
+            0,
+            0,
+            radius * factor * 2.1,
+            radius * factor * 1.1,
+            index * 0.4,
+            0,
+            Math.PI * 2
+          );
+
+          ctx.strokeStyle =
+            index === 0
+              ? "rgba(34, 211, 238, 0.15)"
+              : "rgba(167, 139, 250, 0.13)";
+
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        });
+
+        ctx.restore();
+
+        frame = targetWindow.requestAnimationFrame(draw);
+        animRef.current = frame;
+      };
+
+      resize();
+      targetWindow.addEventListener("resize", resize);
+      draw();
+
+      return () => {
+        disposed = true;
+        targetWindow.cancelAnimationFrame(frame);
+        targetWindow.removeEventListener("resize", resize);
+      };
+    },
+    []
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas) {
-      return startAnimation(canvas, mainAnimationRef, window);
-    }
+    if (!canvas) return;
+
+    return startAnimation(canvas, mainAnimationRef, window);
   }, [startAnimation]);
 
-  // --- 2. Text to Speech ---
+  // ---------------------------------------------------------
+  // SPEECH OUTPUT
+  // ---------------------------------------------------------
+
   const auraSpeak = useCallback((text: string) => {
-    if (!text || text.trim() === "") return;
-    
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.pitch = 1.1;
-      utterance.rate = 1.0;
-      window.speechSynthesis.speak(utterance);
-    }
+    if (!text?.trim() || !("speechSynthesis" in window)) return;
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.pitch = 1.05;
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
   }, []);
 
-  // --- 3. Speech Recognition ---
-  const setupSpeechRecognition = useCallback((win: any = window) => {
-    if ('webkitSpeechRecognition' in win || 'SpeechRecognition' in win) {
-      const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition;
-      
-      if (recognitionRef.current) {
-        try { recognitionRef.current.abort(); } catch(e) {}
+  // ---------------------------------------------------------
+  // COMMAND HISTORY
+  // ---------------------------------------------------------
+
+  const addHistory = useCallback((command: string) => {
+    const cleaned = command.trim();
+    if (!cleaned) return;
+
+    setHistory((previous) => [
+      {
+        id: ++historyIdRef.current,
+        command: cleaned,
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+      ...previous,
+    ].slice(0, 30));
+  }, []);
+
+  const runCommand = useCallback(
+    (command: string) => {
+      const cleaned = command.trim();
+      if (!cleaned) return;
+
+      addHistory(cleaned);
+      setTranscriptText(`"${cleaned}"`);
+      setStatusText("PROCESSING COMMAND");
+
+      try {
+        processCommand({
+          cmd: cleaned,
+          auraDatabase,
+          setStatusText,
+          setTranscriptText,
+          setCommandDetails,
+          auraSpeak,
+          stopMic: () => {
+            isListeningRef.current = false;
+            setIsListening(false);
+
+            try {
+              recognitionRef.current?.stop();
+            } catch {
+              // Recognition may already be stopped.
+            }
+
+            setStatusText("SYSTEM ONLINE");
+          },
+        });
+      } catch (error) {
+        console.error("Aura command failed:", error);
+        setStatusText("COMMAND ERROR");
+        setTranscriptText("Unable to process this command. Please try again.");
+      }
+    },
+    [addHistory, auraSpeak]
+  );
+
+  // ---------------------------------------------------------
+  // SPEECH RECOGNITION
+  // ---------------------------------------------------------
+
+  const setupSpeechRecognition = useCallback(
+    (targetWindow: Window = window) => {
+      const SpeechRecognition =
+        (targetWindow as any).SpeechRecognition ||
+        (targetWindow as any).webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        recognitionRef.current = null;
+        return;
       }
 
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true; // KEEPS LISTENING CONTINUOUSLY
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // Ignore previous recognition instance.
+      }
 
-      recognitionRef.current.onresult = (event: any) => {
-        const current = event.resultIndex;
-        const transcript = event.results[current][0].transcript;
-        setTranscriptText(`"${transcript}"`);
+      const recognition = new SpeechRecognition();
 
-        if (event.results[current].isFinal) {
-          processCommand({
-            cmd: transcript,
-            auraDatabase: auraDatabase,
-            setStatusText: setStatusText,
-            setTranscriptText: setTranscriptText,
-            setCommandDetails: setCommandDetails,
-            auraSpeak: auraSpeak,
-            stopMic: () => {
-              setIsListening(false);
-              isListeningRef.current = false;
-              try { recognitionRef.current?.stop(); } catch(e){}
-              setStatusText("Aura Ready");
-            }
-          });
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event: any) => {
+        let interim = "";
+        const finalCommands: string[] = [];
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          const text = result[0]?.transcript?.trim();
+
+          if (!text) continue;
+
+          if (result.isFinal) {
+            finalCommands.push(text);
+          } else {
+            interim += text;
+          }
         }
+
+        if (interim && mountedRef.current) {
+          setTranscriptText(`"${interim}"`);
+        }
+
+        finalCommands.forEach(runCommand);
       };
 
-      recognitionRef.current.onerror = (event: any) => {
-        console.error("Speech Recognition Error Details:", event.error);
+      recognition.onerror = (event: any) => {
+        if (event.error === "no-speech" || event.error === "aborted") {
+          return;
+        }
 
-        // Ignore 'no-speech' so it doesn't turn off while waiting for you to talk
-        if (event.error === 'no-speech') return; 
-
-        setIsListening(false);
         isListeningRef.current = false;
+        setIsListening(false);
 
-        if (event.error === 'network') {
-          setStatusText("Network Error");
-          setTranscriptText('"Voice recognition requires an internet connection."');
-        } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setStatusText("Mic Blocked");
-          setTranscriptText('"Please allow microphone access."');
-        } else if (event.error === 'aborted' || event.error === 'audio-capture') {
-          setStatusText("Aura Ready");
+        if (event.error === "not-allowed" ||
+            event.error === "service-not-allowed") {
+          setStatusText("MICROPHONE BLOCKED");
+          setTranscriptText("Allow microphone access in your browser settings.");
+        } else if (event.error === "network") {
+          setStatusText("NETWORK ERROR");
+          setTranscriptText("Voice recognition needs a working connection.");
         } else {
-          setStatusText("Aura Ready");
-          setTranscriptText('"Voice input failed. Try again."');
-        }
-
-        setTimeout(() => {
-          setStatusText("Aura Ready");
-          setTranscriptText('"What\'s the price of hoverboard..."');
-        }, 4000);
-      };
-
-      recognitionRef.current.onend = () => {
-        // If the browser auto-stops but we haven't clicked "stop", instantly restart it
-        if (isListeningRef.current) {
-          try { recognitionRef.current.start(); } catch(e) {}
-        } else {
-          setStatusText((prev) => prev === "Listening..." ? "Aura Ready" : prev);
+          setStatusText("VOICE INPUT ERROR");
+          setTranscriptText("Check your microphone and try again.");
         }
       };
-    }
-  }, [auraSpeak]);
+
+      recognition.onend = () => {
+        if (!isListeningRef.current) {
+          setStatusText((previous: string) =>
+            previous === "LISTENING" ? "SYSTEM ONLINE" : previous
+          );
+          return;
+        }
+
+        // Restart if the browser automatically ends a listening session.
+        try {
+          recognition.start();
+        } catch {
+          // Some browsers briefly reject a restart while stopping.
+        }
+      };
+
+      recognitionRef.current = recognition;
+    },
+    [runCommand]
+  );
 
   useEffect(() => {
     setupSpeechRecognition(window);
+
+    return () => {
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // Ignore during cleanup.
+      }
+    };
   }, [setupSpeechRecognition]);
 
   const toggleMic = useCallback(() => {
-    if (!recognitionRef.current) return alert("Speech recognition not supported.");
+    const recognition = recognitionRef.current;
+
+    if (!recognition) {
+      setStatusText("VOICE NOT SUPPORTED");
+      setTranscriptText(
+        "Use a supported browser with microphone access, such as desktop Chrome."
+      );
+      return;
+    }
 
     if (isListeningRef.current) {
-      // Manually clicking the button to turn it OFF
-      try { recognitionRef.current.stop(); } catch(e){}
-      setIsListening(false);
       isListeningRef.current = false;
-      setStatusText("Aura Ready");
-    } else {
-      // Manually clicking the button to turn it ON
+      setIsListening(false);
+
       try {
-        recognitionRef.current.start();
-        setIsListening(true);
-        isListeningRef.current = true;
-        setStatusText("Listening...");
-        setTranscriptText('"..."');
-      } catch(e) {
-        console.error(e);
-        setStatusText("Aura Ready");
+        recognition.stop();
+      } catch {
+        // Already stopped.
       }
+
+      setStatusText("SYSTEM ONLINE");
+      return;
+    }
+
+    try {
+      recognition.start();
+      isListeningRef.current = true;
+      setIsListening(true);
+      setStatusText("LISTENING");
+      setTranscriptText("Listening for your command...");
+    } catch (error) {
+      console.error("Could not start voice recognition:", error);
+      setStatusText("MICROPHONE UNAVAILABLE");
     }
   }, []);
 
-  // --- 4. Picture-in-Picture Logic ---
-  const handlePopOut = async () => {
+  // ---------------------------------------------------------
+  // PICTURE-IN-PICTURE  (fixed: top logo removed, orb centered)
+  // ---------------------------------------------------------
+
+  const handlePopOut = useCallback(async () => {
+    const browser = window as any;
+
+    if (!browser.documentPictureInPicture) {
+      setStatusText("POP-OUT NOT SUPPORTED");
+      setTranscriptText(
+        "Your browser does not support Document Picture-in-Picture."
+      );
+      return;
+    }
+
     try {
-      if ('documentPictureInPicture' in window) {
-        const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
-          width: 400,
-          height: 550,
+      const pipWindow: Window =
+        await browser.documentPictureInPicture.requestWindow({
+          width: 420,
+          height: 620,
         });
 
-        cancelAnimationFrame(mainAnimationRef.current);
-        
-        if (recognitionRef.current) {
-          try { recognitionRef.current.abort(); } catch(e){}
-          setIsListening(false);
-          isListeningRef.current = false;
-          setStatusText("Aura Ready");
-        }
+      pipWindowRef.current = pipWindow;
 
-        // Copy styles
-        [...document.styleSheets].forEach((styleSheet) => {
-          try {
-            const cssRules = [...styleSheet.cssRules].map((rule) => rule.cssText).join('');
-            const style = document.createElement('style');
-            style.textContent = cssRules;
-            pipWindow.document.head.appendChild(style);
-          } catch (e) {
-            const link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = styleSheet.href as string;
+      // Copy accessible stylesheets to the PiP document.
+      [...document.styleSheets].forEach((sheet) => {
+        try {
+          const css = [...sheet.cssRules]
+            .map((rule) => rule.cssText)
+            .join("\n");
+
+          const style = pipWindow.document.createElement("style");
+          style.textContent = css;
+          pipWindow.document.head.appendChild(style);
+        } catch {
+          if (sheet.href) {
+            const link = pipWindow.document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = sheet.href;
             pipWindow.document.head.appendChild(link);
           }
-        });
+        }
+      });
 
-        // Move UI
-        const centerContent = centerContentRef.current;
-        if (centerContent) {
-          pipWindow.document.body.appendChild(centerContent);
-          pipWindow.document.body.style.backgroundColor = '#05060f';
-          pipWindow.document.body.style.display = 'flex';
-          pipWindow.document.body.style.justifyContent = 'center';
-          pipWindow.document.body.style.alignItems = 'center';
-          pipWindow.document.body.style.height = '100vh';
-          pipWindow.document.body.style.margin = '0';
+      const style = pipWindow.document.createElement("style");
+      style.textContent = `
+        * { box-sizing: border-box; }
+        body {
+          margin: 0;
+          min-height: 100vh;
+          background: radial-gradient(ellipse at 50% 40%, rgba(91,33,182,.18), transparent 55%), #080714;
+          color: #f5f3ff;
+          font-family: Rajdhani, sans-serif;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 18px;
+        }
+        .aura-pip {
+          width: 100%;
+          text-align: center;
+        }
+        .aura-pip-orb {
+          position: relative;
+          isolation: isolate;
+          display: grid;
+          place-items: center;
+          width: min(260px, 72vw);
+          aspect-ratio: 1;
+          margin: 0 auto 30px auto;
+          overflow: hidden;
+          border: 1px solid rgba(139, 92, 246, .6);
+          border-radius: 50%;
+          background:
+            radial-gradient(circle at 50% 45%,
+              rgba(75, 38, 150, .34),
+              rgba(20, 15, 51, .65) 40%,
+              rgba(7, 6, 19, .95) 75%);
+          box-shadow:
+            0 0 0 8px rgba(139, 92, 246, .025),
+            0 0 0 18px rgba(139, 92, 246, .02),
+            0 0 55px rgba(124, 58, 237, .2),
+            inset 0 0 45px rgba(59, 130, 246, .09);
         }
 
-        setTimeout(() => {
-          const newCanvas = pipWindow.document.getElementById('waveCanvas');
-          if (newCanvas) {
-            startAnimation(newCanvas, pipAnimationRef, pipWindow);
-          }
-        }, 100);
-
-        setupSpeechRecognition(pipWindow);
-
-        const newMicBtn = pipWindow.document.getElementById('micBtn');
-        if (newMicBtn) {
-          newMicBtn.addEventListener('click', toggleMic);
+        .aura-pip-orb::before {
+          content: "";
+          position: absolute;
+          inset: 9%;
+          border: 1px dashed rgba(167, 139, 250, .23);
+          border-radius: 50%;
+          animation: auraRotate 45s linear infinite;
         }
 
-        pipWindow.addEventListener('pagehide', () => {
+        .aura-pip-orb .aura-orb-grid {
+          position: absolute;
+          inset: 15%;
+          border: 1px solid rgba(59, 130, 246, .18);
+          border-radius: 50%;
+          background: repeating-conic-gradient(
+            from 0deg,
+            rgba(139, 92, 246, .07) 0deg .5deg,
+            transparent .5deg 18deg
+          );
+          mask-image: radial-gradient(circle, transparent 20%, black 100%);
+          -webkit-mask-image: radial-gradient(circle, transparent 20%, black 100%);
+        }
+
+        .aura-pip-orb .aura-orb-ring {
+          position: absolute;
+          border: 1px solid rgba(139, 92, 246, .25);
+          border-radius: 50%;
+        }
+        .aura-pip-orb .aura-orb-ring-one {
+          inset: 22%;
+          border-left-color: rgba(103, 232, 249, .65);
+          border-right-color: rgba(167, 139, 250, .65);
+          transform: rotate(-35deg);
+          animation: auraRotate 12s linear infinite;
+        }
+        .aura-pip-orb .aura-orb-ring-two {
+          inset: 29%;
+          border-top-color: rgba(103, 232, 249, .6);
+          border-bottom-color: rgba(232, 121, 249, .55);
+          transform: rotate(40deg);
+          animation: auraRotateReverse 16s linear infinite;
+        }
+
+        .aura-pip-orb .aura-core-logo {
+          position: absolute;
+          z-index: 2;
+          width: 26%;
+          height: 26%;
+          object-fit: contain;
+          opacity: .92;
+          filter:
+            drop-shadow(0 0 12px rgba(167, 139, 250, .65))
+            drop-shadow(0 0 25px rgba(59, 130, 246, .32));
+          pointer-events: none;
+        }
+
+        .aura-pip-orb canvas {
+          position: absolute;
+          inset: 0;
+          z-index: 3;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+        }
+
+        @keyframes auraRotate { to { transform: rotate(325deg); } }
+        @keyframes auraRotateReverse { to { transform: rotate(-320deg); } }
+
+        #auraPipStatus {
+          margin: 0 0 16px;
+          color: #b4a8d8;
+          font-family: Orbitron, sans-serif;
+          font-size: 10px;
+          letter-spacing: .14em;
+        }
+
+        .aura-pip button {
+          border: 1px solid rgba(196,181,253,.42);
+          background: linear-gradient(110deg, #5b21b6, #4338ca 55%, #1d4ed8);
+          color: white;
+          border-radius: 11px;
+          padding: 13px 26px;
+          cursor: pointer;
+          font-family: Orbitron, sans-serif;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: .13em;
+          box-shadow: 0 8px 28px rgba(91,33,182,.24), inset 0 1px rgba(255,255,255,.12);
+          transition: filter 180ms ease, transform 180ms ease;
+        }
+        .aura-pip button:hover { filter: brightness(1.12); transform: translateY(-1px); }
+      `;
+      pipWindow.document.head.appendChild(style);
+
+      const container = pipWindow.document.createElement("div");
+      container.className = "aura-pip";
+      container.innerHTML = `
+        <div class="aura-pip-orb">
+          <div class="aura-orb-grid" aria-hidden="true"></div>
+          <div class="aura-orb-ring aura-orb-ring-one"></div>
+          <div class="aura-orb-ring aura-orb-ring-two"></div>
+          <img src="${auraLogo}" alt="" class="aura-core-logo" />
+          <canvas id="auraPipCanvas"></canvas>
+        </div>
+        <p id="auraPipStatus">AURA IS READY</p>
+        <button id="auraPipMic" type="button">START VOICE COMMAND</button>
+      `;
+
+      pipWindow.document.body.appendChild(container);
+
+      const pipCanvas = pipWindow.document.getElementById(
+        "auraPipCanvas"
+      ) as HTMLCanvasElement;
+
+      const stopAnimation = startAnimation(
+        pipCanvas,
+        pipAnimationRef,
+        pipWindow
+      );
+
+      const pipStatus = pipWindow.document.getElementById("auraPipStatus");
+      const pipMic = pipWindow.document.getElementById("auraPipMic");
+
+      const updatePip = () => {
+        if (pipStatus) {
+          pipStatus.textContent = isListeningRef.current
+            ? "LISTENING..."
+            : "AURA IS READY";
+        }
+
+        if (pipMic) {
+          pipMic.textContent = isListeningRef.current
+            ? "STOP LISTENING"
+            : "START VOICE COMMAND";
+        }
+      };
+
+      updatePip();
+      pipMic?.addEventListener("click", toggleMic);
+
+      const syncInterval = window.setInterval(updatePip, 500);
+
+      pipWindow.addEventListener(
+        "pagehide",
+        () => {
+          window.clearInterval(syncInterval);
+          stopAnimation();
           cancelAnimationFrame(pipAnimationRef.current);
-          
-          if (newMicBtn) {
-             newMicBtn.removeEventListener('click', toggleMic);
-          }
+          pipWindowRef.current = null;
+          setPipOpen(false);
+        },
+        { once: true }
+      );
 
-          const originalContainer = centerPlaceholderRef.current;
-          if (centerContent && originalContainer) {
-            originalContainer.appendChild(centerContent);
-          }
-
-          setupSpeechRecognition(window);
-          
-          setTimeout(() => {
-            const mainCanvas = canvasRef.current;
-            if (mainCanvas) {
-              startAnimation(mainCanvas, mainAnimationRef, window);
-            }
-          }, 100);
-        });
-
-      } else {
-        alert("Your browser doesn't support Picture-in-Picture.");
-      }
+      setPipOpen(true);
     } catch (error) {
-      console.error("PiP Error:", error);
+      console.error("Aura Picture-in-Picture failed:", error);
+      setStatusText("POP-OUT FAILED");
+      setTranscriptText("Unable to open the floating Aura window.");
     }
+  }, [startAnimation, toggleMic]);
+
+  // ---------------------------------------------------------
+  // NAVIGATION AND FILTERING
+  // ---------------------------------------------------------
+
+  const filteredHistory = history.filter((item) =>
+    item.command.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const selectHistory = (item: HistoryItem) => {
+    setTranscriptText(`"${item.command}"`);
+    setStatusText("COMMAND SELECTED");
+    setCommandDetails({
+      title: "Previous Command",
+      category: "Search History",
+      match: "SAVED",
+      type: "text",
+      data: item.command,
+    });
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    setSearchQuery("");
+  };
+
+  const renderResult = () => {
+    if (commandDetails.type === "video" &&
+        Array.isArray(commandDetails.data)) {
+      if (commandDetails.data.length === 0) {
+        return <p className="aura-empty">No video results returned.</p>;
+      }
+
+      return commandDetails.data.map((video: any, index: number) => (
+        <article className="aura-video" key={`${video.title}-${index}`}>
+          {video.img ? (
+            <img src={video.img} alt="" loading="lazy" />
+          ) : (
+            <div className="aura-video-placeholder">
+              <FaPlay />
+            </div>
+          )}
+
+          <div className="aura-video-info">
+            <strong>{video.title || "Untitled video"}</strong>
+            <span>VIDEO RESULT</span>
+          </div>
+
+          <button
+            type="button"
+            className="aura-icon-button"
+            aria-label={`Search YouTube for ${video.title || "video"}`}
+            onClick={() => {
+              const query = video.query || video.title;
+              if (query) {
+                window.open(
+                  `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+                  "_blank",
+                  "noopener,noreferrer"
+                );
+              }
+            }}
+          >
+            <FaPlay />
+          </button>
+        </article>
+      ));
+    }
+
+    const resultText =
+      typeof commandDetails.data === "string"
+        ? commandDetails.data
+        : JSON.stringify(commandDetails.data, null, 2);
+
+    return (
+      <div className="aura-response">
+        <div className="aura-response-label">
+          <span className="aura-live-dot" />
+          RESPONSE DATA
+        </div>
+        <p>{resultText || "No response data returned."}</p>
+      </div>
+    );
   };
 
   return (
-    <div className="h-screen flex flex-col justify-between p-4 md:p-6 overflow-hidden select-none bg-darkBg font-rajdhani text-white">
-      
+    <div className={`aura-app ${lightMode ? "aura-light" : ""}`}>
+      <div className="aura-scanlines" aria-hidden="true" />
+      <div className="aura-ambient aura-ambient-one" aria-hidden="true" />
+      <div className="aura-ambient aura-ambient-two" aria-hidden="true" />
+
       {/* HEADER */}
-      <header className="flex items-center justify-between px-6 py-3 glass-card rounded-2xl mb-4">
-        <div className="flex items-center gap-3">
-          <img src={auraLogo} alt="Aura Logo" className="w-10 h-10 object-contain drop-shadow-[0_0_10px_rgba(0,240,255,0.5)]" />
-          <h1 className="font-orbitron font-bold text-xl tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-200 to-cyan-400">
-            Aura AI
-          </h1>
+      <header className="aura-header">
+        <div className="aura-brand">
+          <div className="aura-brand-mark">
+            <img src={auraLogo} alt="Aura AI" />
+          </div>
+          <div>
+            <h1>AURA<span> / AI</span></h1>
+            <p>NEURAL COMMAND INTERFACE</p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3 bg-slate-900/60 px-3 py-1.5 rounded-full border border-slate-800">
-            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80" alt="Avatar" className="w-7 h-7 rounded-full object-cover ring-2 ring-cyan-500/50" />
-            <span className="text-sm font-semibold text-slate-200 tracking-wide">Juanito Tamboong</span>
-          </div>
+        <div className="aura-header-status">
+          <span className="aura-live-dot" />
+          <span>CORE ONLINE</span>
+          <span className="aura-header-divider" />
+          <span className="aura-system-version">SYS.V 2.0</span>
+        </div>
 
-          <div className="flex items-center gap-5 text-slate-400">
-            <button className="hover:text-cyan-400 transition-colors relative flex items-center justify-center" title="Notifications">
-              <FaRegBell className="text-xl" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping"></span>
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-cyan-400 rounded-full border-2 border-[#111328]"></span>
-            </button>
+        <div className="aura-header-actions">
+          <button
+            type="button"
+            className="aura-icon-button"
+            title="Notifications"
+            aria-label="Notifications"
+            onClick={() => setShowNotifications((value) => !value)}
+          >
+            <FaRegBell />
+          </button>
 
-            <button className="hover:text-cyan-400 transition-colors flex items-center justify-center" title="Night Mode">
-              <FaRegMoon className="text-xl" />
-            </button>
+          <button
+            type="button"
+            className="aura-icon-button"
+            title="Toggle appearance"
+            aria-label="Toggle appearance"
+            onClick={() => setLightMode((value) => !value)}
+          >
+            <FaRegMoon />
+          </button>
 
-            <button 
-              className="hover:text-cyan-400 transition-colors flex items-center justify-center" 
-              title="Pop out Aura"
-              onClick={handlePopOut}
-            >
-              <FaUpRightFromSquare className="text-lg" />
-            </button>
-
-            <div className="flex items-center gap-1.5 bg-[#2d1b00] border border-amber-500/40 px-3 py-1.5 rounded-lg text-amber-400 text-xs font-bold tracking-widest uppercase shadow-[0_0_15px_rgba(245,158,11,0.15)]">
-              <FaStar className="text-amber-400 text-sm" /> Premium
-            </div>
-          </div>
+          <button
+            type="button"
+            className="aura-icon-button"
+            title="Open floating Aura"
+            aria-label="Open floating Aura"
+            onClick={handlePopOut}
+          >
+            <FaUpRightFromSquare />
+          </button>
         </div>
       </header>
 
-      <main className="grid grid-cols-12 gap-6 flex-1 overflow-hidden">
-        
-        {/* LEFT PANEL */}
-        <section className="col-span-3 glass-card rounded-2xl p-5 flex flex-col justify-between overflow-hidden">
-          <div>
-            <h2 className="font-orbitron font-semibold text-slate-300 text-sm tracking-wider uppercase mb-4 flex items-center justify-between">
-              <span>Previous Search History</span>
-              <FaClockRotateLeft className="text-xs text-cyan-400" />
-            </h2>
-            <div className="grid grid-cols-2 gap-3 max-h-[calc(100vh-250px)] overflow-y-auto pr-1">
-              {initialHistory.map((item, index) => (
-                <div key={index} className="history-card flex flex-col justify-between">
-                  <span className="text-[10px] font-bold text-slate-300 tracking-wider">{item.title}</span>
-                  <div>
-                    <span className="text-xs text-slate-400">{item.percentage}%</span>
-                    <div className="progress-bg">
-                      <div className="progress-fill" style={{ width: `${item.percentage}%` }}></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+      {showNotifications && (
+        <div className="aura-notification">
+          <strong>System notifications</strong>
+          <p>
+            {pipOpen
+              ? "Floating Aura window is open."
+              : "No new notifications."}
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowNotifications(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* MAIN COMMAND CENTER */}
+      <main className="aura-dashboard">
+        {/* LEFT: COMMAND ARCHIVE */}
+        <aside className="aura-panel aura-sidebar">
+          <div className="aura-panel-heading">
+            <div className="aura-section-icon">
+              <FaClockRotateLeft />
+            </div>
+            <div>
+              <span className="aura-eyebrow">DATABASE / 01</span>
+              <h2>Command Archive</h2>
             </div>
           </div>
-          <div className="flex justify-center pt-2">
-            <button className="w-8 h-8 rounded-full bg-slate-800/80 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-400 flex items-center justify-center transition-all border border-slate-700">
-              <FaArrowDown className="text-xs" />
+
+          <button
+            type="button"
+            className="aura-search-box"
+            onClick={() => setShowSearch((value) => !value)}
+          >
+            <FaMagnifyingGlass />
+            <span>{showSearch ? "Hide search" : "Search commands"}</span>
+            <span className="aura-shortcut">⌕</span>
+          </button>
+
+          {showSearch && (
+            <input
+              className="aura-search-input"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Filter your commands..."
+              aria-label="Filter command history"
+            />
+          )}
+
+          <div className="aura-archive-heading">
+            <span>RECENT ACTIVITY</span>
+            <span>{filteredHistory.length.toString().padStart(2, "0")}</span>
+          </div>
+
+          <div className="aura-history-list">
+            {filteredHistory.length > 0 ? (
+              filteredHistory.map((item, index) => (
+                <button
+                  type="button"
+                  className="aura-history-item"
+                  key={item.id}
+                  onClick={() => selectHistory(item)}
+                >
+                  <span className="aura-history-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="aura-history-copy">
+                    <strong>{item.command}</strong>
+                    <small>{item.timestamp}</small>
+                  </span>
+                  <FaArrowRight className="aura-history-arrow" />
+                </button>
+              ))
+            ) : (
+              <div className="aura-empty-history">
+                <FaTerminal />
+                <strong>Archive empty</strong>
+                <p>Your commands will appear here after you use Aura.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="aura-sidebar-footer">
+            <div>
+              <span className="aura-live-dot" />
+              LOCAL SESSION
+            </div>
+            <button
+              type="button"
+              className="aura-clear-button"
+              onClick={clearHistory}
+              disabled={history.length === 0}
+              title="Clear session history"
+            >
+              <FaTrash /> CLEAR
             </button>
           </div>
-        </section>
+        </aside>
 
-        {/* CENTER PANEL */}
-        <section className="col-span-6 flex flex-col items-center justify-center relative px-4">
-          
-          <div ref={centerPlaceholderRef} className="flex flex-col items-center justify-center w-full h-full">
-            
-            <div ref={centerContentRef} className="relative flex flex-col items-center justify-center w-full">
-              
-              <div id="orbContainer" className={`w-80 h-80 rounded-full glass-card border flex items-center justify-center relative overflow-hidden transition-all duration-500 ${isListening ? 'listening-active' : 'orb-glow'}`}>
-                <img src={auraLogo} alt="Core" className="absolute w-32 h-32 object-contain opacity-80 z-0 pointer-events-none drop-shadow-[0_0_20px_rgba(0,240,255,0.8)]" />
-                <canvas ref={canvasRef} id="waveCanvas" className="w-full h-full absolute inset-0 z-10 pointer-events-none"></canvas>
-              </div>
+        {/* CENTER: NEURAL CORE */}
+        <section className="aura-center">
+          <div className="aura-center-topline">
+            <span>NEURAL INTERFACE</span>
+            <span className="aura-center-coordinates">CORE // 001</span>
+          </div>
 
-              <div className="mt-8 text-center min-h-[3rem] px-6">
-                <p className="text-slate-400 font-medium text-lg italic tracking-wide transition-opacity">
-                  {transcriptText}
-                </p>
-                <p className={`font-orbitron text-2xl font-bold tracking-widest mt-2 uppercase ${isListening ? 'text-cyan-400' : 'text-slate-100'}`}>
-                  {statusText}
-                </p>
-              </div>
-              
-              <button 
-                id="micBtn"
-                onClick={toggleMic}
-                className={`mt-5 w-14 h-14 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-purple-600 text-white flex items-center justify-center shadow-lg shadow-cyan-500/40 hover:scale-105 active:scale-95 transition-all ${isListening ? 'ring-4 ring-cyan-400/50' : ''}`}
+          <div
+            className="aura-core-stage"
+            ref={centerPlaceholderRef}
+          >
+            <div
+              className="aura-core-content"
+              ref={centerContentRef}
+            >
+              <div
+                id="orbContainer"
+                className={`aura-orb ${isListening ? "listening-active" : "orb-glow"}`}
               >
-                <FaMicrophone className="text-xl" />
+                <div className="aura-orb-grid" aria-hidden="true" />
+                <div className="aura-orb-ring aura-orb-ring-one" />
+                <div className="aura-orb-ring aura-orb-ring-two" />
+                <img src={auraLogo} alt="" className="aura-core-logo" />
+                <canvas
+                  ref={canvasRef}
+                  id="waveCanvas"
+                  aria-hidden="true"
+                />
+                <span className="aura-orb-cross aura-orb-cross-one" />
+                <span className="aura-orb-cross aura-orb-cross-two" />
+              </div>
+
+              <div className="aura-greeting">
+                <span className="aura-eyebrow">
+                  {isListening ? "AUDIO INPUT ACTIVE" : "AWAITING INPUT"}
+                </span>
+                <h2>
+                  {isListening ? (
+                    <>I'm <span>listening.</span></>
+                  ) : (
+                    <>Enter the <span>unknown.</span></>
+                  )}
+                </h2>
+                <p id="transcriptText">{transcriptText}</p>
+              </div>
+
+              <div className="aura-status-line">
+                <span className={`aura-status-indicator ${isListening ? "active" : ""}`} />
+                <span id="statusText">{statusText}</span>
+              </div>
+
+              <button
+                type="button"
+                id="micBtn"
+                className={`aura-mic-button ${isListening ? "is-listening" : ""}`}
+                onClick={toggleMic}
+                aria-label={isListening ? "Stop listening" : "Start voice command"}
+                aria-pressed={isListening}
+              >
+                {isListening ? <FaStop /> : <FaMicrophone />}
+                <span>{isListening ? "END SESSION" : "INITIATE VOICE"}</span>
               </button>
 
+              <p className="aura-mic-hint">
+                {isListening
+                  ? "SPEAK CLEARLY · PRESS TO STOP"
+                  : "CLICK TO TRANSMIT YOUR COMMAND"}
+              </p>
             </div>
           </div>
 
-          <nav className="absolute bottom-2 flex items-center gap-6 bg-slate-900/90 border border-slate-800 backdrop-blur-xl px-8 py-3 rounded-2xl shadow-2xl">
-            <button className="text-cyan-400 hover:scale-110 transition-transform"><FaHouse className="text-lg" /></button>
-            <button className="text-slate-500 hover:text-cyan-400 hover:scale-110 transition-all"><FaMagnifyingGlass className="text-lg" /></button>
-            <button className="text-slate-500 hover:text-cyan-400 hover:scale-110 transition-all"><FaLayerGroup className="text-lg" /></button>
-            <button className="text-slate-500 hover:text-cyan-400 hover:scale-110 transition-all"><FaFolder className="text-lg" /></button>
+          <nav className="aura-dock" aria-label="Main navigation">
+            {[
+              { id: "home", icon: <FaHouse />, label: "Core" },
+              { id: "search", icon: <FaMagnifyingGlass />, label: "Search" },
+              { id: "layers", icon: <FaLayerGroup />, label: "Systems" },
+              { id: "archive", icon: <FaFolder />, label: "Archive" },
+            ].map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className={activeNav === item.id ? "active" : ""}
+                onClick={() => {
+                  setActiveNav(item.id);
+
+                  if (item.id === "home") {
+                    setCommandDetails(INITIAL_DETAILS);
+                  } else if (item.id === "search") {
+                    setShowSearch(true);
+                  } else if (item.id === "archive") {
+                    setShowSearch(false);
+                  } else {
+                    setCommandDetails({
+                      title: "System Overview",
+                      category: "Aura Interface",
+                      match: "ONLINE",
+                      type: "text",
+                      data: "Voice recognition, command processing, and the neural interface are available in this session.",
+                    });
+                  }
+
+                  if (item.id === "archive" || item.id === "search") {
+                    document.querySelector(".aura-sidebar")?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "nearest",
+                    });
+                  }
+                }}
+                aria-label={item.label}
+                title={item.label}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
           </nav>
         </section>
 
-        {/* RIGHT PANEL (Dynamic) */}
-        <section className="col-span-3 glass-card rounded-2xl p-5 flex flex-col justify-between overflow-y-auto">
-          <div>
-            <h2 className="font-orbitron font-semibold text-slate-300 text-sm tracking-wider uppercase mb-4 flex items-center justify-between">
-              <span>Searched By Command</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            </h2>
-            <div className="space-y-3 mb-6">
-              <div>
-                <span className="text-xs text-textMuted uppercase font-bold tracking-wider">Title</span>
-                <p className="text-base font-semibold text-slate-200 line-clamp-1">{commandDetails.title}</p>
-              </div>
-              <div>
-                <span className="text-xs text-textMuted uppercase font-bold tracking-wider">Category</span>
-                <p className="text-sm text-cyan-400 font-medium">{commandDetails.category}</p>
-              </div>
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs text-textMuted uppercase font-bold tracking-wider">Search Results</span>
-                  <span className="text-sm font-bold font-orbitron text-cyan-400">{commandDetails.match}</span>
-                </div>
-                <div className="flex justify-between text-xs text-slate-400 pt-1 border-t border-slate-800">
-                  <button className="hover:text-cyan-400 transition-colors">View All</button>
-                  <button className="hover:text-cyan-400 transition-colors">View Top Results</button>
-                </div>
-              </div>
+        {/* RIGHT: LIVE OUTPUT */}
+        <aside className="aura-panel aura-results">
+          <div className="aura-panel-heading">
+            <div className="aura-section-icon violet">
+              <FaBolt />
             </div>
-            
-            <div className="mb-6">
-              <span className="text-xs text-textMuted uppercase font-bold tracking-wider block mb-3">Results</span>
-              <div className="space-y-3" id="videoResultsList">
-                {/* Conditional rendering for Video vs Text */}
-                {commandDetails.type === "video" && Array.isArray(commandDetails.data) ? (
-                   commandDetails.data.map((vid: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 hover:border-slate-700 transition-all">
-                      <div className="flex items-center gap-3">
-                        <img src={vid.img} alt={vid.title} className="w-12 h-10 rounded-lg object-cover" />
-                        <div>
-                          <h4 className="text-xs font-semibold text-slate-200 line-clamp-1">{vid.title}</h4>
-                          <span className="text-[10px] text-textMuted uppercase tracking-wider font-bold">YOUTUBE</span>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(vid.query)}`, '_blank')}
-                        className="w-7 h-7 rounded-full bg-slate-800 hover:bg-cyan-500 text-slate-300 hover:text-slate-950 flex items-center justify-center transition-all"
-                      >
-                        <FaPlay className="text-xs ml-0.5" />
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="bg-slate-800/80 border border-cyan-500/30 p-4 rounded-xl rounded-tl-none shadow-[0_0_15px_rgba(0,240,255,0.1)] relative mt-2">
-                    <div className="absolute -left-2 top-0 w-3 h-3 bg-slate-800/80 border-l border-t border-cyan-500/30 transform rotate-45"></div>
-                    <p className="text-sm text-slate-100 leading-relaxed font-rajdhani">
-                      {commandDetails.data}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
             <div>
-              <span className="text-xs text-textMuted uppercase font-bold tracking-wider block mb-2">Nearest Stores</span>
-              <div className="h-28 rounded-xl relative overflow-hidden border border-slate-800 bg-slate-950 map-grid flex items-center justify-center group cursor-pointer">
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80"></div>
-                <img src="https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=400&q=80" alt="Map Preview" className="w-full h-full object-cover mix-blend-overlay opacity-60 group-hover:scale-105 transition-transform duration-500" />
-                <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-xs">
-                  <span className="text-slate-200 font-medium"><FaLocationDot className="text-cyan-400 mr-1 inline" /> Tech Hub Retail</span>
-                  <span className="text-cyan-400 font-bold">1.2 km</span>
-                </div>
-              </div>
+              <span className="aura-eyebrow">INTELLIGENCE / 02</span>
+              <h2>Command Output</h2>
             </div>
           </div>
-        </section>
+
+          <div className="aura-result-title">
+            <span className="aura-eyebrow">IDENTIFIED SUBJECT</span>
+            <h3>{commandDetails.title}</h3>
+            <span className="aura-category-tag">
+              {commandDetails.category}
+            </span>
+          </div>
+
+          <div className="aura-result-metrics">
+            <div>
+              <span>RESULT STATUS</span>
+              <strong>{commandDetails.match}</strong>
+            </div>
+            <div>
+              <span>OUTPUT TYPE</span>
+              <strong>{commandDetails.type.toUpperCase()}</strong>
+            </div>
+          </div>
+
+          <div className="aura-output-heading">
+            <span>RESPONSE STREAM</span>
+            <span className="aura-live-dot" />
+          </div>
+
+          <div className="aura-output-content">
+            {renderResult()}
+          </div>
+
+          <div className="aura-output-footer">
+            <FaBolt />
+            <span>AURA RESPONSE ENGINE</span>
+            <span>READY</span>
+          </div>
+
+          <div className="aura-command-tip">
+            <span className="aura-tip-symbol">i</span>
+            <p>
+              Speak a command to populate this panel with results from your
+              existing command processor.
+            </p>
+          </div>
+        </aside>
       </main>
+
+      <footer className="aura-footer">
+        <span>AURA AI <span className="aura-footer-divider">/</span> COMMAND CENTER</span>
+        <span>NEURAL LINK <span className="aura-footer-online">● ACTIVE</span></span>
+        <span>SESSION HISTORY IS NOT PERSISTED</span>
+      </footer>
     </div>
   );
 };

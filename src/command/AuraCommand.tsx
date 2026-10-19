@@ -151,7 +151,23 @@ export const processCommand = async ({
   setCommandDetails({ title: cmd.toUpperCase(), category: "AI Knowledge", match: "...", type: "text", data: "Thinking..." });
 
   try {
-    const reply = await askAI(lowerCmd);
+    // NEW: Check if the user mentioned a zip code
+    const zipMatch = lowerCmd.match(/\b\d{4,5}\b/); 
+    let enhancedPrompt = lowerCmd;
+
+    // NEW: Inject context so the AI knows what the zip code is for
+    if (/\b(weather|forecast|temperature|rain|sunny)\b/.test(lowerCmd)) {
+      if (zipMatch) {
+        enhancedPrompt = `The user is asking about the weather for the zip code ${zipMatch[0]}. Provide a helpful response acknowledging that zip code.`;
+      } else {
+        enhancedPrompt = `The user is asking about the weather. Tell them to provide a city or zip code so you can help them.`;
+      }
+    } else if (zipMatch) {
+       enhancedPrompt = `The user just provided the zip code ${zipMatch[0]}. Ask them what they would like to know about this location (e.g., weather, stores, etc.).`;
+    }
+
+    // Send the enhanced prompt to the AI
+    const reply = await askAI(enhancedPrompt);
     const safeReply = (reply && reply.trim()) ? reply.trim() : "I couldn't find information on that topic.";
     
     setStatusText("Aura Ready");
