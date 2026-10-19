@@ -64,12 +64,15 @@ const AuraAssistant: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   
-  // Replaced showNotifications with showLogs
   const [showLogs, setShowLogs] = useState(false);
   const [lightMode, setLightMode] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
   
   const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
+
+  // Voice Selection State
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -85,6 +88,28 @@ const AuraAssistant: React.FC = () => {
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
+
+  // Force the browser to load the voices immediately and populate the menu
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      setAvailableVoices(voices);
+      
+      // Auto-select "David" (deep male) if available, otherwise first English voice
+      if (!selectedVoiceName && voices.length > 0) {
+        const defaultVoice = voices.find(v => v.name.includes("David")) || 
+                             voices.find(v => v.lang.includes("en"));
+        if (defaultVoice) {
+          setSelectedVoiceName(defaultVoice.name);
+        }
+      }
+    };
+    
+    loadVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, [selectedVoiceName]);
 
   useEffect(() => {
     return () => {
@@ -247,10 +272,21 @@ const AuraAssistant: React.FC = () => {
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.pitch = 1.05;
-    utterance.rate = 1;
+    
+    // MONSTER VOICE SETTINGS
+    utterance.pitch = 0.6; 
+    utterance.rate = 0.85; 
+
+    // Find the voice the user selected from the dropdown
+    const voices = window.speechSynthesis.getVoices();
+    const chosenVoice = voices.find(v => v.name === selectedVoiceName);
+
+    if (chosenVoice) {
+      utterance.voice = chosenVoice;
+    }
+
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [selectedVoiceName]);
 
   // ---------------------------------------------------------
   // COMMAND HISTORY
@@ -842,14 +878,32 @@ const AuraAssistant: React.FC = () => {
       </header>
 
       {showLogs && (
-        <div className="aura-notification" style={{ top: '90px', right: '110px', width: '350px' }}>
+        <div className="aura-notification" style={{ top: '90px', right: '110px', width: '380px' }}>
           <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontSize: '11px' }}>
-            <FaTerminal /> SYSTEM LOGS
+            <FaTerminal /> SYSTEM SETTINGS & LOGS
           </strong>
-          <div style={{ marginTop: '10px', fontSize: '12px', color: '#928bac', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+          
+          {/* VOICE SELECTOR DROPDOWN */}
+          <div style={{ marginTop: '15px', marginBottom: '15px' }}>
+            <label style={{ display: 'block', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>
+              SELECT AURA'S VOICE:
+            </label>
+            <select 
+              value={selectedVoiceName} 
+              onChange={(e) => setSelectedVoiceName(e.target.value)}
+              style={{ width: '100%', padding: '8px', background: '#0f0d23', color: '#fff', border: '1px solid #5b21b6', borderRadius: '5px', fontSize: '12px', outline: 'none' }}
+            >
+              {availableVoices.map((voice, idx) => (
+                <option key={idx} value={voice.name}>
+                  {voice.name} ({voice.lang})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ fontSize: '11px', color: '#928bac', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', borderTop: '1px solid #2a2352', paddingTop: '10px' }}>
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
-            <p>• Active session: local operator.</p>
             {history.length > 0 && (
               <p style={{ color: '#c4b5fd' }}>• Last command: "{history[0].command}"</p>
             )}
@@ -860,9 +914,9 @@ const AuraAssistant: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowLogs(false)}
-            style={{ marginTop: '12px' }}
+            style={{ marginTop: '15px', width: '100%' }}
           >
-            Close Logs
+            Close Settings
           </button>
         </div>
       )}

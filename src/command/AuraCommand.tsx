@@ -86,7 +86,7 @@ export const processCommand = async ({
     return spoken;
   };
 
-  // NEW: Secure Official YouTube API Search
+  // Official YouTube API Search
   const searchYouTube = async (query: string) => {
     const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
     if (!apiKey) throw new Error("Missing YouTube API key");
@@ -166,7 +166,7 @@ export const processCommand = async ({
       });
     }
 
-    // 4. YOUTUBE — Official API Search
+    // 4. YOUTUBE
     if (/\b(youtube|play|music|song|video)\b/.test(normalized)) {
 
       const isJustOpenYouTube =
@@ -188,9 +188,10 @@ export const processCommand = async ({
         .replace(/\s+/g, ' ')
         .trim();
 
-      // Case A: "go to youtube" -> Loads a standard video
+      // Case A: "go to youtube" -> Loads a blank video screen
       if (isJustOpenYouTube) {
-        setEmbeddedVideo?.("https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1");
+        // 0Bmhjf0rKe8 is a 1-second silent black screen video.
+        setEmbeddedVideo?.("https://www.youtube.com/embed/0Bmhjf0rKe8?autoplay=1");
         return await respond("YouTube is open inside Aura.", {
           title: "YouTube",
           category: "Video Streaming",
@@ -296,7 +297,7 @@ export const processCommand = async ({
     const reply = await askAI(promptWithContext);
     let safeReply = (reply && reply.trim()) ? reply.trim() : "I couldn't find information on that topic.";
 
-    // AI Fallback for "play it" (uses YouTube API)
+    // AI Fallback for "play it"
     if (/\b(play|open)\b/i.test(normalized) && /\b(it|this|that|song|video)\b/i.test(normalized)) {
       const songName = safeReply.replace(/["*]/g, '').trim(); 
       
