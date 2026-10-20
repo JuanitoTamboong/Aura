@@ -26,6 +26,9 @@ import auraDatabase from "../database/aura.json";
 import { processCommand } from "../command/AuraCommand";
 import { clearConversation } from "../command/AuraConversation";
 
+// 1. IMPORT SPLASH SCREEN
+import SplashScreen from "./SplashScreen";
+
 interface CommandDetails {
   title: string;
   category: string;
@@ -49,6 +52,9 @@ const INITIAL_DETAILS: CommandDetails = {
 };
 
 const AuraAssistant: React.FC = () => {
+  // 2. ADD BOOT STATE
+  const [isBooted, setIsBooted] = useState(false);
+
   const [isListening, setIsListening] = useState(false);
   const [statusText, setStatusText] = useState("SYSTEM ONLINE");
   const [transcriptText, setTranscriptText] = useState(
@@ -268,10 +274,11 @@ const AuraAssistant: React.FC = () => {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    // 3. DON'T START ANIMATION UNTIL BOOTED
+    if (!canvas || !isBooted) return;
 
     return startAnimation(canvas, mainAnimationRef, window);
-  }, [startAnimation]);
+  }, [startAnimation, isBooted]);
 
   // ---------------------------------------------------------
   // SPEECH OUTPUT (WARM-UP + MONSTER VOICE)
@@ -890,6 +897,12 @@ const AuraAssistant: React.FC = () => {
     );
   };
 
+  // 4. RENDER SPLASH SCREEN FIRST
+  if (!isBooted) {
+    return <SplashScreen onComplete={() => setIsBooted(true)} />;
+  }
+
+  // 5. RENDER MAIN APP
   return (
     <div className={`aura-app ${lightMode ? "aura-light" : ""}`}>
       <div className="aura-scanlines" aria-hidden="true" />

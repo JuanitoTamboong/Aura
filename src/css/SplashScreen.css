@@ -1,0 +1,141 @@
+.splash-container {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #080714;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(91, 33, 182, 0.2) 0%, transparent 60%),
+    linear-gradient(145deg, #090717 0%, #080714 100%);
+  transition: opacity 600ms ease, visibility 600ms ease;
+  overflow: hidden;
+}
+
+/* When triggered, fade out and disable clicks */
+.splash-container.fade-out {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.splash-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.15;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 3px,
+    rgba(255, 255, 255, 0.05) 4px,
+    transparent 5px
+  );
+}
+
+.splash-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: splashEnter 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Logo & Rings */
+.splash-logo-wrapper {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 140px;
+  height: 140px;
+  margin-bottom: 30px;
+}
+
+.splash-logo {
+  position: relative;
+  z-index: 3;
+  width: 60%;
+  height: 60%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 15px rgba(167, 139, 250, 0.8)) drop-shadow(0 0 30px rgba(59, 130, 246, 0.4));
+  animation: pulseLogo 2s ease-in-out infinite;
+}
+
+.splash-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid transparent;
+}
+
+.splash-ring-outer {
+  inset: 0;
+  border-top-color: rgba(103, 232, 249, 0.6);
+  border-bottom-color: rgba(232, 121, 249, 0.6);
+  animation: spinRing 3s linear infinite;
+}
+
+.splash-ring-inner {
+  inset: 15px;
+  border-left-color: rgba(139, 92, 246, 0.8);
+  border-right-color: rgba(139, 92, 246, 0.8);
+  animation: spinRingReverse 2s linear infinite;
+}
+
+/* Text */
+.splash-title {
+  margin: 0;
+  color: #f2efff;
+  font-family: var(--aura-display, "Orbitron", sans-serif);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+}
+
+.splash-boot-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 15px;
+  color: #a78bfa;
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.splash-dot {
+  width: 6px;
+  height: 6px;
+  background: #67e8f9;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #67e8f9;
+  animation: blink 1s step-end infinite;
+}
+
+/* Keyframes */
+@keyframes splashEnter {
+  from { opacity: 0; transform: scale(0.9) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes spinRing {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spinRingReverse {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
+@keyframes pulseLogo {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
