@@ -9,10 +9,7 @@ import {
   FaUpRightFromSquare,
   FaClockRotateLeft,
   FaMicrophone,
-  FaHouse,
   FaMagnifyingGlass,
-  FaLayerGroup,
-  FaFolder,
   FaPlay,
   FaStop,
   FaTerminal,
@@ -60,14 +57,13 @@ const AuraAssistant: React.FC = () => {
   const [commandDetails, setCommandDetails] =
     useState<CommandDetails>(INITIAL_DETAILS);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [activeNav, setActiveNav] = useState("home");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
-  
+
   const [showLogs, setShowLogs] = useState(false);
   const [lightMode, setLightMode] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
-  
+
   const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
 
   // Voice Selection State
@@ -94,17 +90,17 @@ const AuraAssistant: React.FC = () => {
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices();
       setAvailableVoices(voices);
-      
+
       // Auto-select "David" (deep male) if available, otherwise first English voice
       if (!selectedVoiceName && voices.length > 0) {
-        const defaultVoice = voices.find(v => v.name.includes("David")) || 
+        const defaultVoice = voices.find(v => v.name.includes("David")) ||
                              voices.find(v => v.lang.includes("en"));
         if (defaultVoice) {
           setSelectedVoiceName(defaultVoice.name);
         }
       }
     };
-    
+
     loadVoices();
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
@@ -147,12 +143,18 @@ const AuraAssistant: React.FC = () => {
       let frame = 0;
       let disposed = false;
 
+      // Check if this is running inside the PiP window and in light mode
+      const isLightPiP = targetWindow.document.body.classList.contains("aura-light-pip");
+
       const particles = Array.from({ length: 240 }, (_, i) => ({
         angle: (i / 240) * Math.PI * 2,
         size: 0.8 + Math.random() * 1.4,
         speed: 0.7 + Math.random() * 0.6,
         offset: Math.random() * Math.PI * 2,
-        color: i % 2 === 0 ? "cyan" : "violet",
+        // Brighter colors for light mode PiP, standard colors for dark mode
+        color: isLightPiP 
+          ? (i % 2 === 0 ? "electric-blue" : "hot-pink") 
+          : (i % 2 === 0 ? "cyan" : "violet"),
       }));
 
       const resize = () => {
@@ -196,14 +198,23 @@ const AuraAssistant: React.FC = () => {
           const size = particle.size * (active ? 1.2 : 0.85);
 
           ctx.beginPath();
-          ctx.fillStyle =
-            particle.color === "cyan"
-              ? `rgba(80, 210, 255, ${pulse})`
-              : `rgba(167, 110, 255, ${pulse})`;
+          
+          // Apply the color based on the particle type
+          if (particle.color === "electric-blue") {
+            ctx.fillStyle = `rgba(0, 240, 255, ${pulse})`; // Bright Cyan/Blue
+            ctx.shadowColor = "#00f0ff";
+          } else if (particle.color === "hot-pink") {
+            ctx.fillStyle = `rgba(255, 0, 255, ${pulse})`; // Bright Magenta/Pink
+            ctx.shadowColor = "#ff00ff";
+          } else if (particle.color === "cyan") {
+            ctx.fillStyle = `rgba(80, 210, 255, ${pulse})`;
+            ctx.shadowColor = "#22d3ee";
+          } else {
+            ctx.fillStyle = `rgba(167, 110, 255, ${pulse})`;
+            ctx.shadowColor = "#8b5cf6";
+          }
 
           ctx.shadowBlur = active ? 12 : 5;
-          ctx.shadowColor =
-            particle.color === "cyan" ? "#22d3ee" : "#8b5cf6";
 
           ctx.arc(x, y, size, 0, Math.PI * 2);
           ctx.fill();
@@ -263,7 +274,7 @@ const AuraAssistant: React.FC = () => {
   }, [startAnimation]);
 
   // ---------------------------------------------------------
-  // SPEECH OUTPUT
+  // SPEECH OUTPUT (WARM-UP + MONSTER VOICE)
   // ---------------------------------------------------------
 
   const auraSpeak = useCallback((text: string) => {
@@ -271,21 +282,29 @@ const AuraAssistant: React.FC = () => {
 
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // MONSTER VOICE SETTINGS
-    utterance.pitch = 0.6; 
-    utterance.rate = 0.85; 
+    // 1. WARM-UP: Speak a silent space to wake up the browser's TTS engine instantly
+    const warmUp = new SpeechSynthesisUtterance(" ");
+    warmUp.volume = 0;
+    window.speechSynthesis.speak(warmUp);
 
-    // Find the voice the user selected from the dropdown
-    const voices = window.speechSynthesis.getVoices();
-    const chosenVoice = voices.find(v => v.name === selectedVoiceName);
+    // 2. SPEAK THE REAL TEXT
+    setTimeout(() => {
+      const utterance = new SpeechSynthesisUtterance(text);
 
-    if (chosenVoice) {
-      utterance.voice = chosenVoice;
-    }
+      // MONSTER VOICE SETTINGS
+      utterance.pitch = 0.6;
+      utterance.rate = 0.85;
 
-    window.speechSynthesis.speak(utterance);
+      // Find the voice the user selected from the dropdown
+      const voices = window.speechSynthesis.getVoices();
+      const chosenVoice = voices.find(v => v.name === selectedVoiceName);
+
+      if (chosenVoice) {
+        utterance.voice = chosenVoice;
+      }
+
+      window.speechSynthesis.speak(utterance);
+    }, 50); // 50ms is enough time to wake the engine without a noticeable delay
   }, [selectedVoiceName]);
 
   // ---------------------------------------------------------
@@ -505,6 +524,16 @@ const AuraAssistant: React.FC = () => {
       return;
     }
 
+    // Guard: if a PiP window is already open, just focus it instead of opening another
+    if (pipOpen && pipWindowRef.current) {
+      try {
+        pipWindowRef.current.focus();
+      } catch {
+        // Ignore focus errors (some browsers restrict window.focus).
+      }
+      return;
+    }
+
     try {
       const pipWindow: Window =
         await browser.documentPictureInPicture.requestWindow({
@@ -546,7 +575,39 @@ const AuraAssistant: React.FC = () => {
           align-items: center;
           justify-content: center;
           padding: 18px;
+          transition: background 250ms ease, color 250ms ease;
         }
+        
+        /* PiP Light Mode Overrides */
+        body.aura-light-pip {
+          background: radial-gradient(ellipse at 50% 40%, rgba(196, 181, 253, 0.4), transparent 55%), #f2efff;
+          color: #1e1b36;
+        }
+        body.aura-light-pip #auraPipStatus {
+          color: #6b628a;
+        }
+        body.aura-light-pip .aura-pip-orb {
+          /* Keep dark core, but add bright light-mode glow */
+          border-color: rgba(139, 92, 246, 0.4);
+          background: radial-gradient(circle at 50% 45%, rgba(75, 38, 150, .34), rgba(20, 15, 51, .65) 40%, rgba(7, 6, 19, .95) 75%);
+          box-shadow: 0 0 0 8px rgba(139, 92, 246, 0.1), 0 0 55px rgba(139, 92, 246, 0.25), inset 0 0 45px rgba(139, 92, 246, 0.2);
+        }
+        body.aura-light-pip .aura-pip-orb::before {
+          border-color: rgba(139, 92, 246, 0.3);
+        }
+        body.aura-light-pip .aura-pip-orb .aura-orb-ring-one {
+          border-left-color: #3b82f6;
+          border-right-color: #8b5cf6;
+        }
+        body.aura-light-pip .aura-pip-orb .aura-orb-ring-two {
+          border-top-color: #3b82f6;
+          border-bottom-color: #e879f9;
+        }
+        body.aura-light-pip .aura-pip-orb .aura-orb-grid {
+          background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, 0.15) 0deg 0.5deg, transparent 0.5deg 18deg);
+          border-color: rgba(139, 92, 246, 0.2);
+        }
+
         .aura-pip {
           width: 100%;
           text-align: center;
@@ -572,6 +633,7 @@ const AuraAssistant: React.FC = () => {
             0 0 0 18px rgba(139, 92, 246, .02),
             0 0 55px rgba(124, 58, 237, .2),
             inset 0 0 45px rgba(59, 130, 246, .09);
+          transition: all 250ms ease;
         }
 
         .aura-pip-orb::before {
@@ -581,6 +643,7 @@ const AuraAssistant: React.FC = () => {
           border: 1px dashed rgba(167, 139, 250, .23);
           border-radius: 50%;
           animation: auraRotate 45s linear infinite;
+          transition: border-color 250ms ease;
         }
 
         .aura-pip-orb .aura-orb-grid {
@@ -595,12 +658,14 @@ const AuraAssistant: React.FC = () => {
           );
           mask-image: radial-gradient(circle, transparent 20%, black 100%);
           -webkit-mask-image: radial-gradient(circle, transparent 20%, black 100%);
+          transition: all 250ms ease;
         }
 
         .aura-pip-orb .aura-orb-ring {
           position: absolute;
           border: 1px solid rgba(139, 92, 246, .25);
           border-radius: 50%;
+          transition: border-color 250ms ease;
         }
         .aura-pip-orb .aura-orb-ring-one {
           inset: 22%;
@@ -648,6 +713,7 @@ const AuraAssistant: React.FC = () => {
           font-family: Orbitron, sans-serif;
           font-size: 10px;
           letter-spacing: .14em;
+          transition: color 250ms ease;
         }
 
         .aura-pip button {
@@ -667,6 +733,11 @@ const AuraAssistant: React.FC = () => {
         .aura-pip button:hover { filter: brightness(1.12); transform: translateY(-1px); }
       `;
       pipWindow.document.head.appendChild(style);
+
+      // Apply light mode class if active
+      if (lightMode) {
+        pipWindow.document.body.classList.add("aura-light-pip");
+      }
 
       const container = pipWindow.document.createElement("div");
       container.className = "aura-pip";
@@ -734,7 +805,7 @@ const AuraAssistant: React.FC = () => {
       setStatusText("POP-OUT FAILED");
       setTranscriptText("Unable to open the floating Aura window.");
     }
-  }, [startAnimation, toggleMic]);
+  }, [startAnimation, toggleMic, pipOpen, lightMode]); // Added lightMode to dependencies
 
   // ---------------------------------------------------------
   // NAVIGATION AND FILTERING
@@ -867,10 +938,11 @@ const AuraAssistant: React.FC = () => {
 
           <button
             type="button"
-            className="aura-icon-button"
-            title="Open floating Aura"
+            className={`aura-icon-button ${pipOpen ? "is-active" : ""}`}
+            title={pipOpen ? "Floating Aura is open" : "Open floating Aura"}
             aria-label="Open floating Aura"
             onClick={handlePopOut}
+            disabled={pipOpen}
           >
             <FaUpRightFromSquare />
           </button>
@@ -882,14 +954,14 @@ const AuraAssistant: React.FC = () => {
           <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontSize: '11px' }}>
             <FaTerminal /> SYSTEM SETTINGS & LOGS
           </strong>
-          
+
           {/* VOICE SELECTOR DROPDOWN */}
           <div style={{ marginTop: '15px', marginBottom: '15px' }}>
             <label style={{ display: 'block', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>
               SELECT AURA'S VOICE:
             </label>
-            <select 
-              value={selectedVoiceName} 
+            <select
+              value={selectedVoiceName}
               onChange={(e) => setSelectedVoiceName(e.target.value)}
               style={{ width: '100%', padding: '8px', background: '#0f0d23', color: '#fff', border: '1px solid #5b21b6', borderRadius: '5px', fontSize: '12px', outline: 'none' }}
             >
@@ -909,6 +981,9 @@ const AuraAssistant: React.FC = () => {
             )}
             {embeddedVideo && (
               <p style={{ color: '#67e8f9' }}>• Embedded player active.</p>
+            )}
+            {pipOpen && (
+              <p style={{ color: '#67e8f9' }}>• Floating Aura window active.</p>
             )}
           </div>
           <button
@@ -1100,52 +1175,6 @@ const AuraAssistant: React.FC = () => {
               </div>
             </div>
           )}
-
-          <nav className="aura-dock" aria-label="Main navigation">
-            {[
-              { id: "home", icon: <FaHouse />, label: "Core" },
-              { id: "search", icon: <FaMagnifyingGlass />, label: "Search" },
-              { id: "layers", icon: <FaLayerGroup />, label: "Systems" },
-              { id: "archive", icon: <FaFolder />, label: "Archive" },
-            ].map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                className={activeNav === item.id ? "active" : ""}
-                onClick={() => {
-                  setActiveNav(item.id);
-
-                  if (item.id === "home") {
-                    setCommandDetails(INITIAL_DETAILS);
-                  } else if (item.id === "search") {
-                    setShowSearch(true);
-                  } else if (item.id === "archive") {
-                    setShowSearch(false);
-                  } else {
-                    setCommandDetails({
-                      title: "System Overview",
-                      category: "Aura Interface",
-                      match: "ONLINE",
-                      type: "text",
-                      data: "Voice recognition, command processing, and the neural interface are available in this session.",
-                    });
-                  }
-
-                  if (item.id === "archive" || item.id === "search") {
-                    document.querySelector(".aura-sidebar")?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "nearest",
-                    });
-                  }
-                }}
-                aria-label={item.label}
-                title={item.label}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
         </section>
 
         {/* RIGHT: LIVE OUTPUT */}

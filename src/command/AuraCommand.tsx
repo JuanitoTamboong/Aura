@@ -117,17 +117,39 @@ export const processCommand = async ({
       });
     }
 
-    // 1. CHECK DATABASE
+    // 1. CHECK DATABASE (KEYWORD MATCHING)
     if (auraDatabase?.commands) {
-      for (const key in auraDatabase.commands) {
-        const pattern = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-        if (pattern.test(normalized)) {
+      // Skip the database if the user is trying to search, open a site, or play a song
+      const isSystemCommand = /\b(search|google|youtube|play|open|facebook|gmail|netflix|github)\b/i.test(normalized);
+
+      if (!isSystemCommand) {
+        // Sort keys by length (longest first) to avoid short words overriding long ones
+        const sortedKeys = Object.keys(auraDatabase.commands).sort((a, b) => b.length - a.length);
+
+        for (const key of sortedKeys) {
           const dbCommand = auraDatabase.commands[key];
-          return await respond(dbCommand.speak, {
-            title: dbCommand.title,
-            category: dbCommand.category,
-            data: dbCommand.speak,
-          });
+          const keyLower = key.toLowerCase();
+          
+          // If the user's sentence contains the exact JSON keyword
+          if (normalized.includes(keyLower)) {
+            return await respond(dbCommand.speak, {
+              title: dbCommand.title,
+              category: dbCommand.category,
+              data: dbCommand.speak,
+            });
+          }
+
+          // Fallback for individual words inside the key
+          const keywords = keyLower.split(" ");
+          const matchedAllKeywords = keywords.length > 1 && keywords.every((word: string) => normalized.includes(word));
+          
+          if (matchedAllKeywords) {
+             return await respond(dbCommand.speak, {
+              title: dbCommand.title,
+              category: dbCommand.category,
+              data: dbCommand.speak,
+            });
+          }
         }
       }
     }
@@ -190,7 +212,6 @@ export const processCommand = async ({
 
       // Case A: "go to youtube" -> Loads a blank video screen
       if (isJustOpenYouTube) {
-        // 0Bmhjf0rKe8 is a 1-second silent black screen video.
         setEmbeddedVideo?.("https://www.youtube.com/embed/0Bmhjf0rKe8?autoplay=1");
         return await respond("YouTube is open inside Aura.", {
           title: "YouTube",
