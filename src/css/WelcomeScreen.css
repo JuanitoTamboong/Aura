@@ -1,0 +1,180 @@
+.welcome-container {
+  position: fixed;
+  inset: 0;
+  /* 100dvh fixes the mobile browser address bar overlap issue */
+  height: 100dvh; 
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #080714;
+  background-image:
+    radial-gradient(circle at 50% 45%, rgba(91, 33, 182, 0.25) 0%, transparent 55%),
+    linear-gradient(145deg, #090717 0%, #080714 100%);
+  transition: opacity 600ms ease, visibility 600ms ease;
+  overflow: hidden;
+  padding: 20px;
+}
+
+.welcome-container.fade-out {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.welcome-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.12;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 3px,
+    rgba(255, 255, 255, 0.05) 4px,
+    transparent 5px
+  );
+}
+
+.welcome-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 400px; /* Prevents stretching on tablets */
+  animation: welcomeEnter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Logo & Rings */
+.welcome-logo-wrapper {
+  position: relative;
+  display: grid;
+  place-items: center;
+  /* Scales smoothly between 100px on small phones to 140px on desktop */
+  width: clamp(100px, 30vw, 140px);
+  height: clamp(100px, 30vw, 140px);
+  margin-bottom: clamp(30px, 8vw, 50px);
+}
+
+.welcome-logo {
+  position: relative;
+  z-index: 3;
+  width: 55%;
+  height: 55%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 15px rgba(167, 139, 250, 0.8))
+          drop-shadow(0 0 30px rgba(59, 130, 246, 0.4));
+  animation: welcomePulse 2s ease-in-out infinite;
+}
+
+.welcome-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid transparent;
+}
+
+.welcome-ring-outer {
+  inset: 0;
+  border-top-color: rgba(103, 232, 249, 0.5);
+  border-bottom-color: rgba(232, 121, 249, 0.5);
+  animation: welcomeSpin 4s linear infinite;
+}
+
+.welcome-ring-inner {
+  inset: 14px;
+  border-left-color: rgba(139, 92, 246, 0.6);
+  border-right-color: rgba(139, 92, 246, 0.6);
+  animation: welcomeSpinReverse 3s linear infinite;
+}
+
+/* Typing Greeting - Responsive sizing */
+.welcome-greeting {
+  margin: 0;
+  color: #f2efff;
+  font-family: var(--aura-display, "Orbitron", sans-serif);
+  /* Scales between 16px and 22px based on screen width */
+  font-size: clamp(16px, 5vw, 22px); 
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 20px rgba(139, 92, 246, 0.6);
+  min-height: 32px;
+  text-align: center;
+  width: 100%;
+}
+
+.welcome-cursor {
+  display: inline-block;
+  margin-left: 4px;
+  color: #67e8f9;
+  animation: welcomeBlink 1s step-end infinite;
+}
+
+/* Subtext - Responsive sizing */
+.welcome-subtext {
+  margin: clamp(15px, 4vw, 20px) 0 0;
+  color: #8b82b8;
+  font-family: monospace;
+  font-size: clamp(9px, 3vw, 11px);
+  letter-spacing: 0.15em;
+  text-align: center;
+  opacity: 0;
+  animation: welcomeFadeIn 0.6s ease 1.4s forwards;
+  padding: 0 10px;
+  line-height: 1.5;
+}
+
+/* Progress bar */
+.welcome-progress {
+  margin-top: clamp(30px, 8vw, 40px);
+  /* Width scales with the screen but caps at 240px */
+  width: clamp(180px, 60vw, 240px);
+  height: 3px;
+  background: rgba(139, 92, 246, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.welcome-progress-bar {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #67e8f9, #8b5cf6, #e879f9);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.8);
+  animation: welcomeProgress 2.2s ease-in-out forwards;
+}
+
+/* Keyframes */
+@keyframes welcomeEnter {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes welcomeSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes welcomeSpinReverse {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+@keyframes welcomePulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50%      { transform: scale(1.05); opacity: 1; }
+}
+
+@keyframes welcomeBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+@keyframes welcomeFadeIn {
+  to { opacity: 1; }
+}
+
+@keyframes welcomeProgress {
+  from { width: 0; }
+  to   { width: 100%; }
+}

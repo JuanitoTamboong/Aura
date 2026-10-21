@@ -26,8 +26,9 @@ import auraDatabase from "../database/aura.json";
 import { processCommand } from "../command/AuraCommand";
 import { clearConversation } from "../command/AuraConversation";
 
-// 1. IMPORT SPLASH SCREEN
+// 1. IMPORT SPLASH + WELCOME SCREENS
 import SplashScreen from "./SplashScreen";
+import WelcomeScreen from "./WelcomeScreen";
 
 interface CommandDetails {
   title: string;
@@ -51,9 +52,11 @@ const INITIAL_DETAILS: CommandDetails = {
   data: "Your command results will appear here.",
 };
 
+// 2. BOOT STAGES: splash → welcome → ready
+type BootStage = "splash" | "welcome" | "ready";
+
 const AuraAssistant: React.FC = () => {
-  // 2. ADD BOOT STATE
-  const [isBooted, setIsBooted] = useState(false);
+  const [bootStage, setBootStage] = useState<BootStage>("splash");
 
   const [isListening, setIsListening] = useState(false);
   const [statusText, setStatusText] = useState("SYSTEM ONLINE");
@@ -274,11 +277,11 @@ const AuraAssistant: React.FC = () => {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    // 3. DON'T START ANIMATION UNTIL BOOTED
-    if (!canvas || !isBooted) return;
+    // 3. ONLY START ANIMATION WHEN FULLY BOOTED
+    if (!canvas || bootStage !== "ready") return;
 
     return startAnimation(canvas, mainAnimationRef, window);
-  }, [startAnimation, isBooted]);
+  }, [startAnimation, bootStage]);
 
   // ---------------------------------------------------------
   // SPEECH OUTPUT (WARM-UP + MONSTER VOICE)
@@ -812,7 +815,7 @@ const AuraAssistant: React.FC = () => {
       setStatusText("POP-OUT FAILED");
       setTranscriptText("Unable to open the floating Aura window.");
     }
-  }, [startAnimation, toggleMic, pipOpen, lightMode]); // Added lightMode to dependencies
+  }, [startAnimation, toggleMic, pipOpen, lightMode]);
 
   // ---------------------------------------------------------
   // NAVIGATION AND FILTERING
@@ -897,12 +900,17 @@ const AuraAssistant: React.FC = () => {
     );
   };
 
-  // 4. RENDER SPLASH SCREEN FIRST
-  if (!isBooted) {
-    return <SplashScreen onComplete={() => setIsBooted(true)} />;
+  // 4. SPLASH SCREEN
+  if (bootStage === "splash") {
+    return <SplashScreen onComplete={() => setBootStage("welcome")} />;
   }
 
-  // 5. RENDER MAIN APP
+  // 5. WELCOME SCREEN
+  if (bootStage === "welcome") {
+    return <WelcomeScreen onComplete={() => setBootStage("ready")} />;
+  }
+
+  // 6. RENDER MAIN APP
   return (
     <div className={`aura-app ${lightMode ? "aura-light" : ""}`}>
       <div className="aura-scanlines" aria-hidden="true" />
