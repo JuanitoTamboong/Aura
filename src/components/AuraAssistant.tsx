@@ -79,7 +79,6 @@ const AuraAssistant: React.FC = () => {
 
   const [showLogs, setShowLogs] = useState(false);
   
-  // Load lightMode from localStorage on initial render
   const [lightMode, setLightMode] = useState(() => {
     return localStorage.getItem("aura_light_mode") === "true";
   });
@@ -95,7 +94,6 @@ const AuraAssistant: React.FC = () => {
 
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   
-  // Load selected voice from localStorage
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>(() => {
     return localStorage.getItem("aura_selected_voice") || "";
   });
@@ -126,7 +124,6 @@ const AuraAssistant: React.FC = () => {
   const handsFreeRef = useRef(false);
   const wakeCooldownRef = useRef(false);
 
-  // Load user's name on boot
   useEffect(() => {
     const profile = getUserProfile();
     if (profile.name && profile.name !== "Operator") {
@@ -136,12 +133,10 @@ const AuraAssistant: React.FC = () => {
     }
   }, []);
 
-  // Save lightMode to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem("aura_light_mode", String(lightMode));
   }, [lightMode]);
 
-  // Save selected voice to localStorage whenever it changes
   useEffect(() => {
     if (selectedVoiceName) {
       localStorage.setItem("aura_selected_voice", selectedVoiceName);
@@ -169,22 +164,18 @@ const AuraAssistant: React.FC = () => {
     handsFreeRef.current = handsFree;
   }, [handsFree]);
 
-  // ★ FIX: Prevent the default voice logic from overwriting the saved voice
   useEffect(() => {
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices();
       setAvailableVoices(voices);
 
-      // Check localStorage directly to avoid overwriting the state if the saved voice exists
       const savedVoice = localStorage.getItem("aura_selected_voice");
       
       if (savedVoice) {
-        // If the voice was saved, ensure the state matches it (fixes race condition)
         if (selectedVoiceName !== savedVoice) {
           setSelectedVoiceName(savedVoice);
         }
       } else if (!selectedVoiceName && voices.length > 0) {
-        // Only use default if there is NO saved voice and NO current state
         const defaultVoice = voices.find(v => v.name.includes("David")) ||
                              voices.find(v => v.lang.includes("en"));
         if (defaultVoice) {
@@ -197,7 +188,7 @@ const AuraAssistant: React.FC = () => {
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
-  }, [selectedVoiceName]); // Keep dependency to allow manual updates
+  }, [selectedVoiceName]);
 
   useEffect(() => {
     return () => {
@@ -391,10 +382,8 @@ const AuraAssistant: React.FC = () => {
     }, 50);
   }, [selectedVoiceName]);
 
-  // Test voice when user changes dropdown
   const prevVoiceRef = useRef<string>("");
   useEffect(() => {
-    // Only play test sound if the voice actually changed
     if (selectedVoiceName && prevVoiceRef.current && prevVoiceRef.current !== selectedVoiceName) {
       auraSpeak("Voice updated. How does this sound?");
     }
@@ -467,7 +456,6 @@ const AuraAssistant: React.FC = () => {
     stopRequestedRef.current = true;
     try { recognitionRef.current?.abort(); } catch {}
     setStatusText("SYSTEM ONLINE");
-    setTranscriptText("Voice mode off. Click INITIATE VOICE to restart.");
   }, []);
 
   const runCommand = useCallback(
@@ -632,10 +620,13 @@ const AuraAssistant: React.FC = () => {
           return; 
         }
 
+        // ★ FIX: Keep updating the UI with what it's currently hearing
         if (interim && mountedRef.current) {
           setTranscriptText(`"${interim}"`);
         }
 
+        // ★ FIX: Only process the final command if it's long enough, and add a small delay
+        // before clearing the lastCommandText to prevent mobile from cutting words.
         finalCommands.forEach((cmd) => {
           if (cmd !== lastCommandTextRef.current && cmd.length > 1) {
             lastCommandTextRef.current = cmd; 
@@ -646,9 +637,10 @@ const AuraAssistant: React.FC = () => {
 
             runCommand(cmd);       
             
+            // Wait 4 seconds before allowing the exact same command to be triggered again
             setTimeout(() => {
               if (lastCommandTextRef.current === cmd) lastCommandTextRef.current = "";
-            }, 3000);
+            }, 4000);
           }
         });
       };
@@ -673,6 +665,7 @@ const AuraAssistant: React.FC = () => {
       recognition.onend = () => {
         const mode = micModeRef.current;
         
+        // ★ FIX: If the mobile browser forces the mic to stop while we are in active mode, restart it immediately
         if ((mode === "standby" || mode === "active") && !stopRequestedRef.current) {
           try {
             recognition.start();
@@ -782,7 +775,6 @@ const AuraAssistant: React.FC = () => {
     }
   }, [bootStage, startHandsFree]);
 
-  // Auto-close modal AFTER Aura finishes speaking
   useEffect(() => {
     if (!showResponseModal || isMobile) return;
 

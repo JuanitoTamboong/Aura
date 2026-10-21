@@ -878,8 +878,8 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     margin-top: 12px; 
     flex: 1; 
     min-height: 0;
-    overflow-y: auto;
-    padding-bottom: 12px;
+    overflow-y: auto; /* Allows mobile to scroll down and see output */
+    padding-bottom: 20px;
   }
 
   .aura-center {
@@ -888,13 +888,14 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     height: auto;
     overflow: visible;
     flex-shrink: 0;
+    padding-bottom: 10px;
   }
 
-  /* ★ FIX: Constrain sidebar height on mobile so the list scrolls internally */
   .aura-sidebar { 
     order: 2; 
     max-height: 400px; 
     flex-shrink: 0; 
+    overflow-y: auto;
   }
   
   .aura-results { 
@@ -904,9 +905,11 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     flex-shrink: 0; 
   }
 
-  .aura-core-stage { padding: 20px 10px; }
-  .aura-orb { width: min(275px, 72vw); }
-  .aura-greeting h2 { font-size: 27px; }
+  /* Make the orb smaller on mobile so it doesn't take up the whole screen */
+  .aura-core-stage { padding: 10px 10px 20px; }
+  .aura-orb { width: min(200px, 60vw); } 
+  .aura-greeting h2 { font-size: 24px; }
+  .aura-greeting p { font-size: 14px; padding: 0 10px; }
 
   .aura-footer { 
     flex-shrink: 0;
@@ -946,11 +949,11 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     height: auto;
   }
 
-  .aura-orb { width: min(230px, 68vw); }
-  .aura-greeting h2 { font-size: 24px; }
+  .aura-orb { width: min(170px, 55vw); }
+  .aura-greeting h2 { font-size: 20px; }
   .aura-mic-button { min-width: 190px; }
 
-  .aura-core-stage { padding: 20px 10px; }
+  .aura-core-stage { padding: 10px 10px 20px; }
 
   .aura-notification {
     top: 70px;

@@ -113,11 +113,9 @@ export const processCommand = async ({
 
   setStatusText("PROCESSING COMMAND");
 
-  // ★ FIXED: This now strips "aura" from ANYWHERE in the string, not just the beginning.
+  // Clean up the text
   const command = originalCommand.replace(/\baura\b/gi, "").replace(/^\s*[\s,.:;-]+/, "").trim();
   const text = command || originalCommand;
-  
-  // ★ FIXED: Clean the prompt sent to the AI so it doesn't say "Hello!"
   const normalized = text.toLowerCase().replace(/\b(aur+a|hey aura|okay aura)\b/gi, "").trim();
 
   const respond = async (
@@ -152,7 +150,6 @@ export const processCommand = async ({
   try {
     // --- USER MEMORY SAVING ---
     
-    // 1. CLEAR MEMORY COMMAND
     if (/\b(clear memory|clear my memory|forget everything|forget me|wipe memory|delete memory)\b/i.test(normalized)) {
       clearUserMemory();
       return await respond("I have completely wiped my memory bank. We are starting fresh.", {
@@ -161,7 +158,6 @@ export const processCommand = async ({
       });
     }
 
-    // 2. SAVE NAME
     if (/\b(my name is|i am|ako si|pangalan ko ay)\b/i.test(normalized)) {
       let rawName = originalCommand.replace(/.*\b(my name is|i am|ako si|pangalan ko ay)\b/gi, "").trim();
       let newName = rawName.replace(/\b(save|it|check|the|database|and|please|thanks|thank|you|remember|this|search|open|play|aura)\b/gi, '').replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim();
@@ -175,15 +171,9 @@ export const processCommand = async ({
       }
     }
 
-    // 3. SAVE FACTS
     if (/\b(remember|keep in mind|tandaan mo|remember that)\b/i.test(normalized)) {
       let fact = originalCommand.replace(/\b(remember|that|keep in mind|tandaan mo)\b/gi, "").trim();
-      
-      fact = fact
-        .replace(/\b(aura|this|my|the|a|an)\b/gi, "")
-        .replace(/\s+/g, ' ')
-        .trim();
-        
+      fact = fact.replace(/\b(aura|this|my|the|a|an)\b/gi, "").replace(/\s+/g, ' ').trim();
       fact = fact.charAt(0).toUpperCase() + fact.slice(1);
 
       if (fact.length > 0) {
@@ -212,47 +202,35 @@ export const processCommand = async ({
       }
     }
 
-    // 4. CHECK DATABASE (★ FIXED BUG HERE)
-    if (auraDatabase?.commands) {
+    // ★ 4. CHECK DATABASE (Properly reads the Array format)
+    if (auraDatabase?.commands && Array.isArray(auraDatabase.commands)) {
       const isSystemCommand =
         /\b(search|google|youtube|play|open|facebook|gmail|netflix|github)\b/i.test(
           normalized
         );
 
       if (!isSystemCommand) {
-        const sortedKeys = Object.keys(auraDatabase.commands).sort(
-          (a, b) => b.length - a.length
+        // Sort by length descending to match longer phrases first
+        const sortedCommands = [...auraDatabase.commands].sort(
+          (a, b) => b.command.length - a.command.length
         );
 
-        for (const key of sortedKeys) {
-          const dbCommand = auraDatabase.commands[key];
+        for (const dbCommand of sortedCommands) {
+          if (typeof dbCommand?.speak !== "string" || !dbCommand?.command) continue;
 
-          if (typeof dbCommand?.speak !== "string") {
-            continue;
-          }
-
-          const escapedKey = key
+          const escapedKey = dbCommand.command
             .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
             .replace(/\s+/g, "\\s+");
 
-          const exactPhrase = new RegExp(
-            `\\b${escapedKey}\\b`,
-            "i"
-          );
-
-          // Greetings should match only a greeting command,
-          // not a word inside a longer question.
-          const isGreeting = /^(hi|hey|hello|greetings)[.!?,\s]*$/i.test(
-            normalized
-          );
+          const exactPhrase = new RegExp(`\\b${escapedKey}\\b`, "i");
+          const isGreeting = /^(hi|hey|hello|greetings)[.!?,\s]*$/i.test(normalized);
 
           if (
             exactPhrase.test(normalized) &&
-            (!/^(hi|hey|hello|greetings)$/i.test(key) ||
-              isGreeting)
+            (!/^(hi|hey|hello|greetings)$/i.test(dbCommand.command) || isGreeting)
           ) {
             return await respond(dbCommand.speak, {
-              title: dbCommand.title || key,
+              title: dbCommand.title || dbCommand.command,
               category: dbCommand.category || "Conversation",
               data: dbCommand.speak,
             });
@@ -365,11 +343,10 @@ export const processCommand = async ({
       ? `\nHere is a list of facts you remember about the user:\n- ${profile.facts.join("\n- ")}\n` 
       : "";
 
-    // ★ FIXED PROMPT: Removed the conversation history wrapper that caused the AI to say "Hello!"
     let promptWithContext = "";
     if (history) {
       promptWithContext = 
-        `You are Aura, a highly capable AI terminal assistant. The user is ${profile.name}.${factsList}\n` +
+        `You are Aura, a highly capable AI terminal assistant. You were created and built by Juanito Tamboong. The user is ${profile.name}.${factsList}\n` +
         `Keep your responses direct, helpful, and concise. Do not use roleplay asterisks like *stretching* or emojis unless explicitly asked.\n` +
         `DO NOT GREET THE USER. Answer the question directly.\n` +
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n\n` +
@@ -377,7 +354,7 @@ export const processCommand = async ({
         `User: ${enhancedPrompt}\nAura:`;
     } else {
       promptWithContext = 
-        `You are Aura, a highly capable AI terminal assistant. The user is ${profile.name}.${factsList}\n` +
+        `You are Aura, a highly capable AI terminal assistant. You were created and built by Juanito Tamboong. The user is ${profile.name}.${factsList}\n` +
         `Keep your responses direct, helpful, and concise. Do not use roleplay asterisks like *stretching* or emojis unless explicitly asked.\n` +
         `DO NOT GREET THE USER. Answer the question directly.\n` +
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n\n` +
@@ -387,7 +364,6 @@ export const processCommand = async ({
     const reply = await askAI(promptWithContext);
     let safeReply = (reply && reply.trim()) ? reply.trim() : "I couldn't find information on that topic.";
 
-    // AI Fallback for "play it"
     if (/\b(play|open)\b/i.test(normalized) && /\b(it|this|that|song|video)\b/i.test(normalized)) {
       const songName = safeReply.replace(/["*]/g, '').trim(); 
       try {
