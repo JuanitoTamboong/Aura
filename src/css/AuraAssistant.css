@@ -423,7 +423,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-greeting h2 { margin: 8px 0 10px; font-size: clamp(25px, 2.4vw, 35px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; }
 .aura-greeting h2 span { color: var(--aura-violet); text-shadow: 0 0 24px rgba(139, 92, 246, 0.2); }
 
-/* FIXED: Added wrapping and min-height so spoken commands don't cut off */
+/* FIXED: Added standard line-clamp for editor compatibility */
 .aura-greeting p { 
   max-width: 420px; 
   margin: 0 auto; 
@@ -436,6 +436,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   min-height: 48px; 
   display: -webkit-box;
   -webkit-line-clamp: 4; 
+  line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow-y: auto; 
 }
@@ -714,8 +715,15 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 2px; }
   .aura-header-actions .aura-icon-button { width: 32px; height: 32px; }
   .aura-dashboard { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
-  /* FIXED: Increased min-height to accommodate wrapped text */
-  .aura-center { order: 1; min-height: 720px; overflow: hidden; }
+  
+  /* FIXED: Removes the giant empty space, fills the screen, but grows if text gets long */
+  .aura-center { 
+    order: 1; 
+    min-height: calc(100dvh - 100px); 
+    height: auto; 
+    overflow: hidden; 
+  }
+  
   .aura-sidebar { order: 2; min-height: 280px; max-height: 440px; }
   .aura-results { order: 3; min-height: 390px; max-height: none; }
   
@@ -731,8 +739,13 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 0; }
   .aura-header-actions .aura-icon-button { width: 29px; height: 32px; }
   .aura-brand h1 { font-size: 12px; }
-  /* FIXED: Increased min-height for very small screens */
-  .aura-center { min-height: 680px; }
+  
+  /* FIXED: Apply the same natural growing height for very small screens */
+  .aura-center { 
+    min-height: calc(100dvh - 100px); 
+    height: auto; 
+  }
+  
   .aura-orb { width: min(230px, 68vw); }
   .aura-greeting h2 { font-size: 24px; }
   .aura-mic-button { min-width: 190px; }

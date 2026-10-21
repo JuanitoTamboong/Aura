@@ -5,7 +5,10 @@ import {
   addAssistantTurn,
   clearConversation,
   getConversationForPrompt,
+  getConversationTurns,
   hasRecentConversation,
+  getUserProfile,
+  saveUserProfile,
 } from './AuraConversation';
 
 interface CommandDetails {
@@ -46,18 +49,47 @@ export const processCommand = async ({
 
   const lowerCmd = originalCommand.toLowerCase().trim();
 
-  // 0. INSTANT STOP
+  // 0. INSTANT ABSOLUTE STOP
   if (/\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/.test(lowerCmd)) {
-    stopMic();
+    stopMic(); // Turns off the listening state
     clearConversation();
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    
+    // Force stop all speech synthesis immediately
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    
     setEmbeddedVideo?.(null);
 
-    const stopMsg = "I am listening. What would you like to do next?";
-    setCommandDetails({ title: "Standing By", category: "Awaiting Command", match: "100%", type: "text", data: stopMsg });
+    const stopMsg = "Stopped.";
+    setCommandDetails({ title: "Standing By", category: "Awaiting Command", match: "100%", type: "text", data: "System paused. Say 'Continue' or ask a new question." });
     setTranscriptText(`"Stopped."`);
     setStatusText("SYSTEM ONLINE");
+    
+    // We do NOT call auraSpeak here, so it stays completely silent when you tell it to stop.
     return stopMsg;
+  }
+
+  // 0.5 CONTINUE SPEAKING
+  if (/\b(continue|go on|keep going|resume|tuloy mo)\b/.test(lowerCmd)) {
+    const history = getConversationTurns();
+    const lastAssistantTurn = [...history].reverse().find(t => t.role === "assistant");
+    
+    if (lastAssistantTurn) {
+      setTranscriptText(`"Continuing..."`);
+      setStatusText("SPEAKING");
+      
+      // Repeat the last thing Aura said
+      await Promise.resolve(auraSpeak(lastAssistantTurn.text));
+      
+      setStatusText("SYSTEM ONLINE");
+      return lastAssistantTurn.text;
+    } else {
+      const msg = "There is nothing to continue. Please ask a new question.";
+      setStatusText("SYSTEM ONLINE");
+      await Promise.resolve(auraSpeak(msg));
+      return msg;
+    }
   }
 
   setStatusText("PROCESSING COMMAND");
@@ -86,7 +118,6 @@ export const processCommand = async ({
     return spoken;
   };
 
-  // Official YouTube API Search
   const searchYouTube = async (query: string) => {
     const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
     if (!apiKey) throw new Error("Missing YouTube API key");
@@ -98,56 +129,68 @@ export const processCommand = async ({
     const data = await res.json();
     
     if (data.items && data.items.length > 0) {
-      return { 
-        id: data.items[0].id.videoId, 
-        title: data.items[0].snippet.title 
-      };
+      return { id: data.items[0].id.videoId, title: data.items[0].snippet.title };
     }
     return null;
   };
 
   try {
+    // --- USER MEMORY SAVING ---
+    const nameMatch = normalized.match(/(?:my name is|i am|ako si|pangalan ko ay)\s+([a-z\s]+)/i);
+    if (nameMatch && nameMatch[1]) {
+      const newName = nameMatch[1].trim().replace(/[.,!?]/g, ''); 
+      saveUserProfile({ name: newName });
+      return await respond(`Nice to meet you, ${newName}. I have saved your name to my memory.`, {
+        title: "Memory Updated",
+        category: "System",
+        data: `I will remember that your name is ${newName}.`,
+      });
+    }
+
+    if (/\b(kilala mo ako|do you know me|who am i|sino ako)\b/i.test(normalized)) {
+      const profile = getUserProfile();
+      if (profile.name !== "Operator") {
+         return await respond(`Yes, you are ${profile.name}. I remember you.`, {
+           title: "User Identity", category: "Memory", data: `You are ${profile.name}.`,
+         });
+      } else {
+         return await respond(`I don't know your name yet. Try saying "My name is [your name]".`, {
+           title: "Unknown User", category: "Memory", data: "I don't know you yet.",
+         });
+      }
+    }
+
     // CLOSE EMBEDDED PLAYER
     if (/\b(close|hide|exit|dismiss)\b/.test(normalized) && /\b(video|player|it|youtube|that)\b/.test(normalized)) {
       setEmbeddedVideo?.(null);
       return await respond("Closing the video player.", {
-        title: "Player Closed",
-        category: "System Control",
-        data: "Embedded player hidden.",
+        title: "Player Closed", category: "System Control", data: "Embedded player hidden.",
       });
     }
 
     // 1. CHECK DATABASE (KEYWORD MATCHING)
     if (auraDatabase?.commands) {
-      // Skip the database if the user is trying to search, open a site, or play a song
       const isSystemCommand = /\b(search|google|youtube|play|open|facebook|gmail|netflix|github)\b/i.test(normalized);
 
       if (!isSystemCommand) {
-        // Sort keys by length (longest first) to avoid short words overriding long ones
         const sortedKeys = Object.keys(auraDatabase.commands).sort((a, b) => b.length - a.length);
 
         for (const key of sortedKeys) {
           const dbCommand = auraDatabase.commands[key];
           const keyLower = key.toLowerCase();
           
-          // If the user's sentence contains the exact JSON keyword
           if (normalized.includes(keyLower)) {
             return await respond(dbCommand.speak, {
-              title: dbCommand.title,
-              category: dbCommand.category,
-              data: dbCommand.speak,
+              title: dbCommand.title, category: dbCommand.category, data: dbCommand.speak,
             });
           }
 
-          // Fallback for individual words inside the key
           const keywords = keyLower.split(" ");
           const matchedAllKeywords = keywords.length > 1 && keywords.every((word: string) => normalized.includes(word));
           
           if (matchedAllKeywords) {
              return await respond(dbCommand.speak, {
-              title: dbCommand.title,
-              category: dbCommand.category,
-              data: dbCommand.speak,
+              title: dbCommand.title, category: dbCommand.category, data: dbCommand.speak,
             });
           }
         }
@@ -157,45 +200,27 @@ export const processCommand = async ({
     // 2. CLOSE WINDOW
     if (/\b(close|quit|exit|shut)\b/.test(normalized) && /\b(window|tab|yourself|aura|app|dashboard)\b/.test(normalized)) {
       const msg = await respond("Closing this window now.", {
-        title: "Close Window",
-        category: "System Control",
-        data: "Attempting to close this window. If nothing happens, please click the X button.",
+        title: "Close Window", category: "System Control", data: "Attempting to close this window.",
       });
-      setTimeout(() => {
-        try { window.close(); } catch (e) { /* ignore */ }
-      }, 1200);
+      setTimeout(() => { try { window.close(); } catch (e) {} }, 1200);
       return msg;
     }
 
     // 3. TIME & DATE
     if (/\btime\b/.test(normalized) && !/\b(youtube|play|video|song|music)\b/.test(normalized)) {
-      const now = new Date();
-      const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      return await respond(`It is currently ${timeString}.`, {
-        title: "Current Time",
-        category: "System Info",
-        data: `It is currently ${timeString}.`,
-      });
+      const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return await respond(`It is currently ${timeString}.`, { title: "Current Time", category: "System Info", data: `It is currently ${timeString}.` });
     }
 
     if (/\bdate\b/.test(normalized) || normalized.includes('day is it today')) {
-      const now = new Date();
-      const dateString = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      return await respond(`Today is ${dateString}.`, {
-        title: "Today's Date",
-        category: "System Info",
-        data: `Today is ${dateString}.`,
-      });
+      const dateString = new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      return await respond(`Today is ${dateString}.`, { title: "Today's Date", category: "System Info", data: `Today is ${dateString}.` });
     }
 
     // 4. YOUTUBE
     if (/\b(youtube|play|music|song|video)\b/.test(normalized)) {
-
-      const isJustOpenYouTube =
-        /^(go\s*to\s+youtube|open\s+youtube|youtube|launch\s+youtube|show\s+(me\s+)?youtube)$/i.test(normalized);
-
-      const isContextualFollowUp =
-        /^(it|that|this|the\s+video|the\s+song|that\s+song|that\s+video|it\s+play\s+it|it\s+it|play\s+it\s+play\s+it|play\s+it\s+it|play\s+it)$/i.test(normalized.trim());
+      const isJustOpenYouTube = /^(go\s*to\s+youtube|open\s+youtube|youtube|launch\s+youtube|show\s+(me\s+)?youtube)$/i.test(normalized);
+      const isContextualFollowUp = /^(it|that|this|the\s+video|the\s+song|that\s+song|that\s+video|it\s+play\s+it|it\s+it|play\s+it\s+play\s+it|play\s+it\s+it|play\s+it)$/i.test(normalized.trim());
 
       let query = normalized
         .replace(/\b(can you|could you|would you|please|i want to|i wanna|let me)\b/g, '')
@@ -207,47 +232,25 @@ export const processCommand = async ({
         .replace(/\b(play it|play|listen to|watch|open)\b/g, '')
         .replace(/\bit\b/g, '')
         .replace(/\b(music|song|video)\b/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+        .replace(/\s+/g, ' ').trim();
 
-      // Case A: "go to youtube" -> Loads a blank video screen
       if (isJustOpenYouTube) {
         setEmbeddedVideo?.("https://www.youtube.com/embed/0Bmhjf0rKe8?autoplay=1");
-        return await respond("YouTube is open inside Aura.", {
-          title: "YouTube",
-          category: "Video Streaming",
-          data: "Say a song name to play it here.",
-        });
+        return await respond("YouTube is open inside Aura.", { title: "YouTube", category: "Video Streaming", data: "Say a song name to play it here." });
       }
 
-      // Case B: Search using the API
       if (!isContextualFollowUp && query.length > 0) {
         setStatusText("SEARCHING YOUTUBE...");
-        
         try {
           const result = await searchYouTube(query);
-          
           if (result) {
             setEmbeddedVideo?.(`https://www.youtube.com/embed/${result.id}?autoplay=1`);
-            return await respond(`Playing ${result.title} inside Aura.`, {
-              title: `YouTube: ${query}`,
-              category: "Music / Video Search",
-              data: result.title,
-            });
+            return await respond(`Playing ${result.title} inside Aura.`, { title: `YouTube: ${query}`, category: "Music / Video Search", data: result.title });
           } else {
-            return await respond(`I couldn't find any videos for ${query}.`, {
-              title: "Not Found",
-              category: "Error",
-              data: "No results found.",
-            });
+            return await respond(`I couldn't find any videos for ${query}.`, { title: "Not Found", category: "Error", data: "No results found." });
           }
         } catch (err: any) {
-          console.error("YouTube Search Error:", err);
-          return await respond(`I had trouble searching YouTube for ${query}. Make sure your API key is valid.`, {
-            title: "Error",
-            category: "System",
-            data: err.message || "YouTube search failed.",
-          });
+          return await respond(`I had trouble searching YouTube for ${query}.`, { title: "Error", category: "System", data: err.message });
         }
       }
     }
@@ -258,15 +261,10 @@ export const processCommand = async ({
         .replace(/\b(can you|please|could you|would you|i want to|let me)\b/g, '')
         .replace(/\b(search for|search on|search|look up|find on|find|google|browse|surf the web|surf)\b/g, '')
         .replace(/\b(the internet|the web|online|for)\b/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+        .replace(/\s+/g, ' ').trim();
 
       if (query.length > 0) {
-        const msg = await respond(`Searching Google for ${query}`, {
-          title: `Google: ${query}`,
-          category: "Web Search",
-          data: `Searching Google for: ${query}`,
-        });
+        const msg = await respond(`Searching Google for ${query}`, { title: `Google: ${query}`, category: "Web Search", data: `Searching Google for: ${query}` });
         window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, "_blank");
         return msg;
       }
@@ -282,11 +280,7 @@ export const processCommand = async ({
     
     for (const site in siteMap) {
       if (new RegExp(`\\b${site.replace(/ /g, '\\s')}\\b`).test(normalized)) {
-        const msg = await respond(`Opening ${site}`, {
-          title: site.toUpperCase(),
-          category: "Quick Open",
-          data: `Opening ${site}...`,
-        });
+        const msg = await respond(`Opening ${site}`, { title: site.toUpperCase(), category: "Quick Open", data: `Opening ${site}...` });
         window.open(siteMap[site], "_blank");
         return msg;
       }
@@ -297,22 +291,27 @@ export const processCommand = async ({
 
     const history = getConversationForPrompt(); 
     const continuing = hasRecentConversation();
-    
     let enhancedPrompt = text;
 
     if (/\b(play|open)\b/i.test(normalized) && /\b(it|this|that|song|video)\b/i.test(normalized)) {
        enhancedPrompt = `${text}. Reply with ONLY the exact name of the song or video they are referring to in the history. Do not add any other words.`;
     }
 
+    const profile = getUserProfile();
+    
     let promptWithContext = "";
     if (history) {
       promptWithContext = 
-        `You are Aura, a voice assistant. Continue the conversation naturally based on the recent history. ` +
-        `Answer the new user message directly in a short, spoken-friendly way. Do not ask for clarification if the history already provides the context.\n\n` +
+        `You are Aura. The user is ${profile.name}. You are a highly capable AI.\n` +
+        `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n` +
+        `Answer the new user message directly. Be conversational and smart.\n\n` +
         `--- Recent conversation ---\n${history}\n--- End of conversation ---\n\n` +
         `User: ${enhancedPrompt}\nAura:`;
     } else {
-      promptWithContext = enhancedPrompt;
+      promptWithContext = 
+        `You are Aura. The user is ${profile.name}. You are a highly capable AI.\n` +
+        `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n` +
+        `User: ${enhancedPrompt}\nAura:`;
     }
 
     const reply = await askAI(promptWithContext);
@@ -321,20 +320,15 @@ export const processCommand = async ({
     // AI Fallback for "play it"
     if (/\b(play|open)\b/i.test(normalized) && /\b(it|this|that|song|video)\b/i.test(normalized)) {
       const songName = safeReply.replace(/["*]/g, '').trim(); 
-      
       try {
         setStatusText("SEARCHING YOUTUBE...");
         const result = await searchYouTube(songName);
-        
         if (result) {
           setEmbeddedVideo?.(`https://www.youtube.com/embed/${result.id}?autoplay=1`);
-          
           const msg = `Playing ${songName} inside Aura.`;
           setCommandDetails({ title: `YouTube: ${songName}`, category: "Music / Video Search", match: "100%", type: "text", data: msg });
-          
           addUserTurn(originalCommand);
           addAssistantTurn(msg);
-          
           setStatusText("SYSTEM ONLINE");
           await Promise.resolve(auraSpeak(msg));
           return msg;

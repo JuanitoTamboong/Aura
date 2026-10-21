@@ -11,6 +11,36 @@ const CONTEXT_TTL_MS = 1000 * 60 * 5; // 5 minutes
 
 let turns: ConversationTurn[] = [];
 
+// --- User Profile Memory ---
+export interface UserProfile {
+  name: string;
+  facts: string[];
+}
+
+const defaultProfile: UserProfile = {
+  name: "Operator",
+  facts: []
+};
+
+const loadProfile = (): UserProfile => {
+  try {
+    const saved = localStorage.getItem("aura_user_profile");
+    return saved ? JSON.parse(saved) : defaultProfile;
+  } catch {
+    return defaultProfile;
+  }
+};
+
+let userProfile: UserProfile = loadProfile();
+
+export const getUserProfile = (): UserProfile => userProfile;
+
+export const saveUserProfile = (profile: Partial<UserProfile>) => {
+  userProfile = { ...userProfile, ...profile };
+  localStorage.setItem("aura_user_profile", JSON.stringify(userProfile));
+};
+// ---------------------------
+
 const pushTurn = (turn: ConversationTurn) => {
   turns.push(turn);
   if (turns.length > MAX_TURNS) {
