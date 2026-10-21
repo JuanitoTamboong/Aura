@@ -9,35 +9,36 @@ interface WelcomeScreenProps {
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
   const [isFading, setIsFading] = useState(false);
   const [greeting, setGreeting] = useState("");
+  
+  // ★ NEW: Read the theme from local storage
+  const [lightMode] = useState(() => {
+    return localStorage.getItem("aura_light_mode") === "true";
+  });
 
   const hasPlayedRef = useRef(false);
 
-  // --- SPEAK "WELCOME BACK, SIR" ---
   const playWelcomeVoice = () => {
     if (hasPlayedRef.current) return;
     if (!("speechSynthesis" in window)) return;
 
     hasPlayedRef.current = true;
-    
-    // Clear any leftover audio from the Splash screen
     window.speechSynthesis.cancel();
 
-    // FIXED: Changed from "Master" to "Sir"
     const utterance = new SpeechSynthesisUtterance("Welcome back, Sir.");
-    
-    // Monster voice — same settings as Aura core
     utterance.pitch = 0.6;
     utterance.rate = 0.85;
 
-    // Voice loading is async. We check if voices are ready, if not, we wait.
+    const savedVoiceName = localStorage.getItem("aura_selected_voice");
+
     const setVoiceAndSpeak = () => {
       const voices = window.speechSynthesis.getVoices();
-      const chosenVoice =
+      
+      const chosenVoice = 
+        (savedVoiceName ? voices.find(v => v.name === savedVoiceName) : null) ||
         voices.find((v) => v.name.includes("David")) ||
         voices.find((v) => v.lang.includes("en"));
 
       if (chosenVoice) utterance.voice = chosenVoice;
-
       window.speechSynthesis.speak(utterance);
     };
 
@@ -52,11 +53,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
   };
 
   useEffect(() => {
-    // 1. Try to play immediately
     playWelcomeVoice();
 
-    // 2. Fallback: If the browser blocked autoplay, play on first interaction.
-    // Added "touchstart" specifically for mobile devices.
     const handleInteraction = () => {
       if (!hasPlayedRef.current) {
         playWelcomeVoice();
@@ -67,11 +65,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     window.addEventListener("keydown", handleInteraction);
     window.addEventListener("touchstart", handleInteraction, { passive: true });
 
-    // 3. Typing Animation (Already says SIR, keeping it here for reference)
     const fullText = "WELCOME BACK, SIR";
     let i = 0;
-    
-    // Clear the greeting on mount to prevent StrictMode duplication issues
     setGreeting("");
 
     const typing = window.setInterval(() => {
@@ -83,7 +78,6 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
       }
     }, 60);
 
-    // 4. Timers for fade and completion
     const fadeTimer = window.setTimeout(() => setIsFading(true), 2600);
     const completeTimer = window.setTimeout(() => onComplete(), 3200);
 
@@ -97,8 +91,9 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     };
   }, [onComplete]);
 
+  // ★ NEW: Added conditional class here
   return (
-    <div className={`welcome-container ${isFading ? "fade-out" : ""}`}>
+    <div className={`welcome-container ${lightMode ? "aura-light" : ""} ${isFading ? "fade-out" : ""}`}>
       <div className="welcome-scanlines" />
 
       <div className="welcome-content">

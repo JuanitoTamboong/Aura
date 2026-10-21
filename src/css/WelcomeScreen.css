@@ -178,3 +178,62 @@
   from { width: 0; }
   to   { width: 100%; }
 }
+
+/* =========================================================
+   LIGHT MODE OVERRIDES
+   ========================================================= */
+
+.welcome-container.aura-light {
+  background: #f5f3ff;
+  background-image:
+    radial-gradient(circle at 50% 45%, rgba(196, 181, 253, 0.4) 0%, transparent 55%),
+    linear-gradient(145deg, #f5f3ff 0%, #eae6fa 100%);
+}
+
+.welcome-container.aura-light .welcome-scanlines {
+  opacity: 0.05;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 3px,
+    rgba(139, 92, 246, 0.1) 4px,
+    transparent 5px
+  );
+}
+
+.welcome-container.aura-light .welcome-logo {
+  filter: drop-shadow(0 0 15px rgba(139, 92, 246, 0.4)) 
+          drop-shadow(0 0 30px rgba(59, 130, 246, 0.2));
+}
+
+.welcome-container.aura-light .welcome-ring-outer {
+  border-top-color: rgba(59, 130, 246, 0.5);
+  border-bottom-color: rgba(232, 121, 249, 0.5);
+}
+
+.welcome-container.aura-light .welcome-ring-inner {
+  border-left-color: rgba(139, 92, 246, 0.5);
+  border-right-color: rgba(139, 92, 246, 0.5);
+}
+
+.welcome-container.aura-light .welcome-greeting {
+  color: #21183c;
+  text-shadow: none;
+}
+
+.welcome-container.aura-light .welcome-cursor {
+  color: #8b5cf6;
+}
+
+.welcome-container.aura-light .welcome-subtext {
+  color: #6b628a;
+}
+
+.welcome-container.aura-light .welcome-progress {
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.welcome-container.aura-light .welcome-progress-bar {
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #e879f9);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+}

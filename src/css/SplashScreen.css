@@ -139,3 +139,53 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
+
+/* =========================================================
+   LIGHT MODE OVERRIDES
+   ========================================================= */
+
+.splash-container.aura-light {
+  background: #f5f3ff;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(196, 181, 253, 0.4) 0%, transparent 60%),
+    linear-gradient(145deg, #f5f3ff 0%, #eae6fa 100%);
+}
+
+.splash-container.aura-light .splash-scanlines {
+  opacity: 0.05;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 3px,
+    rgba(139, 92, 246, 0.1) 4px,
+    transparent 5px
+  );
+}
+
+.splash-container.aura-light .splash-title {
+  color: #21183c;
+  text-shadow: none;
+}
+
+.splash-container.aura-light .splash-boot-text {
+  color: #6b628a;
+}
+
+.splash-container.aura-light .splash-dot {
+  background: #8b5cf6;
+  box-shadow: 0 0 10px #8b5cf6;
+}
+
+.splash-container.aura-light .splash-logo {
+  filter: drop-shadow(0 0 15px rgba(139, 92, 246, 0.4)) drop-shadow(0 0 30px rgba(59, 130, 246, 0.2));
+}
+
+.splash-container.aura-light .splash-ring-outer {
+  border-top-color: rgba(59, 130, 246, 0.6);
+  border-bottom-color: rgba(232, 121, 249, 0.6);
+}
+
+.splash-container.aura-light .splash-ring-inner {
+  border-left-color: rgba(139, 92, 246, 0.6);
+  border-right-color: rgba(139, 92, 246, 0.6);
+}

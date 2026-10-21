@@ -78,7 +78,12 @@ const AuraAssistant: React.FC = () => {
   const [showSearch, setShowSearch] = useState(false);
 
   const [showLogs, setShowLogs] = useState(false);
-  const [lightMode, setLightMode] = useState(false);
+  
+  // Load lightMode from localStorage on initial render
+  const [lightMode, setLightMode] = useState(() => {
+    return localStorage.getItem("aura_light_mode") === "true";
+  });
+  
   const [pipOpen, setPipOpen] = useState(false);
 
   const [userProfile, setUserProfile] = useState(getUserProfile());
@@ -89,7 +94,11 @@ const AuraAssistant: React.FC = () => {
   const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
 
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
+  
+  // Load selected voice from localStorage
+  const [selectedVoiceName, setSelectedVoiceName] = useState<string>(() => {
+    return localStorage.getItem("aura_selected_voice") || "";
+  });
 
   const [handsFree, setHandsFree] = useState(false);
   const [micMode, setMicMode] = useState<MicMode>("off");
@@ -127,6 +136,18 @@ const AuraAssistant: React.FC = () => {
     }
   }, []);
 
+  // Save lightMode to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("aura_light_mode", String(lightMode));
+  }, [lightMode]);
+
+  // Save selected voice to localStorage whenever it changes
+  useEffect(() => {
+    if (selectedVoiceName) {
+      localStorage.setItem("aura_selected_voice", selectedVoiceName);
+    }
+  }, [selectedVoiceName]);
+
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth <= 760);
@@ -148,12 +169,22 @@ const AuraAssistant: React.FC = () => {
     handsFreeRef.current = handsFree;
   }, [handsFree]);
 
+  // ★ FIX: Prevent the default voice logic from overwriting the saved voice
   useEffect(() => {
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices();
       setAvailableVoices(voices);
 
-      if (!selectedVoiceName && voices.length > 0) {
+      // Check localStorage directly to avoid overwriting the state if the saved voice exists
+      const savedVoice = localStorage.getItem("aura_selected_voice");
+      
+      if (savedVoice) {
+        // If the voice was saved, ensure the state matches it (fixes race condition)
+        if (selectedVoiceName !== savedVoice) {
+          setSelectedVoiceName(savedVoice);
+        }
+      } else if (!selectedVoiceName && voices.length > 0) {
+        // Only use default if there is NO saved voice and NO current state
         const defaultVoice = voices.find(v => v.name.includes("David")) ||
                              voices.find(v => v.lang.includes("en"));
         if (defaultVoice) {
@@ -166,7 +197,7 @@ const AuraAssistant: React.FC = () => {
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
-  }, [selectedVoiceName]);
+  }, [selectedVoiceName]); // Keep dependency to allow manual updates
 
   useEffect(() => {
     return () => {
@@ -326,7 +357,6 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation, isMobile]);
 
-  // ★ FIX: Added utterance.onerror to ensure mic isn't permanently ignored if speech fails
   const auraSpeak = useCallback((text: string) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
@@ -361,10 +391,10 @@ const AuraAssistant: React.FC = () => {
     }, 50);
   }, [selectedVoiceName]);
 
-  // ★ FIX: Add a dedicated effect to test the voice when the user changes it in the dropdown
+  // Test voice when user changes dropdown
   const prevVoiceRef = useRef<string>("");
   useEffect(() => {
-    // Only speak if the voice actually changed (ignores initial setup) and it's not empty
+    // Only play test sound if the voice actually changed
     if (selectedVoiceName && prevVoiceRef.current && prevVoiceRef.current !== selectedVoiceName) {
       auraSpeak("Voice updated. How does this sound?");
     }
@@ -752,12 +782,11 @@ const AuraAssistant: React.FC = () => {
     }
   }, [bootStage, startHandsFree]);
 
-  // ★ NEW: Auto-close modal AFTER Aura finishes speaking
+  // Auto-close modal AFTER Aura finishes speaking
   useEffect(() => {
     if (!showResponseModal || isMobile) return;
 
     const checkSpeechAndClose = () => {
-      // If Aura is not speaking anymore, start the 3-second close timer
       if (!window.speechSynthesis.speaking) {
         if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
         
@@ -765,12 +794,10 @@ const AuraAssistant: React.FC = () => {
           setShowResponseModal(false);
         }, 3000);
       } else {
-        // If still speaking, keep checking
         setTimeout(checkSpeechAndClose, 500);
       }
     };
 
-    // Initial delay to allow the speech synthesis to start
     const initialDelay = setTimeout(checkSpeechAndClose, 1000);
     
     return () => {
@@ -1170,7 +1197,7 @@ const AuraAssistant: React.FC = () => {
                 color: lightMode ? '#21183c' : '#fff', 
                 border: '1px solid var(--aura-border-bright)', 
                 borderRadius: '5px', fontSize: '12px', outline: 'none',
-                colorScheme: lightMode ? 'light' : 'dark' // ★ FIX: Helps native dropdown styling
+                colorScheme: lightMode ? 'light' : 'dark'
               }}
             >
               {availableVoices.map((voice, idx) => (
