@@ -266,7 +266,14 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   -webkit-backdrop-filter: blur(18px);
 }
 
-.aura-sidebar, .aura-results { padding: 20px; }
+.aura-sidebar, .aura-results { 
+  padding: 20px; 
+  /* ★ FIX: Ensure these panels act as flex containers to contain the scrolling list */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
 .aura-panel-heading { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-bottom: 24px; }
 .aura-section-icon {
   display: grid;
@@ -321,7 +328,17 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-archive-heading { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 12px; color: var(--aura-muted); font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.12em; }
 .aura-archive-heading span:last-child { color: var(--aura-violet); }
 
-.aura-history-list { display: flex; flex: 1; flex-direction: column; gap: 7px; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-right: 3px; }
+/* ★ FIX: Ensure the list takes up remaining space and scrolls internally */
+.aura-history-list { 
+  display: flex; 
+  flex: 1; 
+  flex-direction: column; 
+  gap: 7px; 
+  min-height: 0; 
+  overflow-x: hidden; 
+  overflow-y: auto; 
+  padding-right: 3px; 
+}
 .aura-history-item {
   display: flex;
   align-items: center;
@@ -873,8 +890,19 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     flex-shrink: 0;
   }
 
-  .aura-sidebar { order: 2; min-height: auto; max-height: none; flex-shrink: 0; }
-  .aura-results { order: 3; min-height: auto; max-height: none; flex-shrink: 0; }
+  /* ★ FIX: Constrain sidebar height on mobile so the list scrolls internally */
+  .aura-sidebar { 
+    order: 2; 
+    max-height: 400px; 
+    flex-shrink: 0; 
+  }
+  
+  .aura-results { 
+    order: 3; 
+    min-height: auto; 
+    max-height: none; 
+    flex-shrink: 0; 
+  }
 
   .aura-core-stage { padding: 20px 10px; }
   .aura-orb { width: min(275px, 72vw); }

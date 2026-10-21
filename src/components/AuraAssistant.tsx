@@ -326,6 +326,7 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation, isMobile]);
 
+  // ★ FIX: Added utterance.onerror to ensure mic isn't permanently ignored if speech fails
   const auraSpeak = useCallback((text: string) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
@@ -352,9 +353,23 @@ const AuraAssistant: React.FC = () => {
         }
       };
 
+      utterance.onerror = () => {
+        ignoreMicRef.current = false; 
+      };
+
       window.speechSynthesis.speak(utterance);
     }, 50);
   }, [selectedVoiceName]);
+
+  // ★ FIX: Add a dedicated effect to test the voice when the user changes it in the dropdown
+  const prevVoiceRef = useRef<string>("");
+  useEffect(() => {
+    // Only speak if the voice actually changed (ignores initial setup) and it's not empty
+    if (selectedVoiceName && prevVoiceRef.current && prevVoiceRef.current !== selectedVoiceName) {
+      auraSpeak("Voice updated. How does this sound?");
+    }
+    prevVoiceRef.current = selectedVoiceName;
+  }, [selectedVoiceName, auraSpeak]);
 
   const addHistory = useCallback((command: string) => {
     const cleaned = command.trim();
@@ -437,7 +452,6 @@ const AuraAssistant: React.FC = () => {
       setTranscriptText(`"${cleaned}"`);
       setStatusText("PROCESSING COMMAND");
 
-      // ★ FIX: Clear any pending auto-close timers before opening the modal again
       if (autoCloseTimeoutRef.current) {
         clearTimeout(autoCloseTimeoutRef.current);
       }
@@ -529,7 +543,6 @@ const AuraAssistant: React.FC = () => {
           try { window.speechSynthesis.cancel(); } catch {}
 
           if (handsFreeRef.current) {
-            // ★ FIX: Clear auto-close timer when stopping/standing by
             if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
             
             clearConversation();
@@ -548,7 +561,6 @@ const AuraAssistant: React.FC = () => {
           }
 
           if (!handsFreeRef.current) {
-            // ★ FIX: Clear auto-close timer when stopping
             if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
 
             stopMic(); 
@@ -571,7 +583,6 @@ const AuraAssistant: React.FC = () => {
         if (WAIT_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
           
-          // ★ FIX: Explicitly clear the auto-close timer so it NEVER closes when waiting
           if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
           
           setStatusText("LISTENING");
@@ -1158,10 +1169,22 @@ const AuraAssistant: React.FC = () => {
                 background: lightMode ? '#ffffff' : '#0f0d23', 
                 color: lightMode ? '#21183c' : '#fff', 
                 border: '1px solid var(--aura-border-bright)', 
-                borderRadius: '5px', fontSize: '12px', outline: 'none' 
+                borderRadius: '5px', fontSize: '12px', outline: 'none',
+                colorScheme: lightMode ? 'light' : 'dark' // ★ FIX: Helps native dropdown styling
               }}
             >
-              {availableVoices.map((voice, idx) => (<option key={idx} value={voice.name}>{voice.name} ({voice.lang})</option>))}
+              {availableVoices.map((voice, idx) => (
+                <option 
+                  key={idx} 
+                  value={voice.name}
+                  style={{
+                    background: lightMode ? '#ffffff' : '#0f0d23',
+                    color: lightMode ? '#21183c' : '#fff'
+                  }}
+                >
+                  {voice.name} ({voice.lang})
+                </option>
+              ))}
             </select>
           </div>
 
