@@ -649,8 +649,20 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-command-tip { background: rgba(139, 92, 246, 0.04); border-color: rgba(139, 92, 246, 0.15); }
 .aura-light .aura-command-tip p { color: #6b628a; }
 
-.aura-light .aura-notification { background: #ffffff; color: #21183c; box-shadow: 0 20px 60px rgba(139, 92, 246, 0.15); }
+.aura-light .aura-notification { 
+  background: #ffffff; 
+  color: #21183c; 
+  box-shadow: 0 20px 60px rgba(139, 92, 246, 0.15); 
+}
 .aura-light .aura-notification p { color: #6b628a; }
+.aura-light .aura-notification button {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--aura-purple);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+.aura-light .aura-notification button:hover {
+  background: rgba(139, 92, 246, 0.2);
+}
 
 .aura-light .aura-footer { color: #a59bc2; }
 .aura-light .aura-footer-online { color: var(--aura-purple); }
@@ -795,6 +807,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     right: 12px;
     width: auto;
     max-height: calc(100vh - 100px);
+    z-index: 1000 !important;
   }
 }
 

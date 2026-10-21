@@ -968,27 +968,37 @@ const AuraAssistant: React.FC = () => {
 
       {showLogs && (
         <div className="aura-notification">
-          <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontSize: '11px' }}><FaTerminal /> SYSTEM SETTINGS & LOGS</strong>
+          <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--aura-violet)', fontSize: '11px' }}><FaTerminal /> SYSTEM SETTINGS & LOGS</strong>
           
           <div style={{ marginTop: '15px', marginBottom: '15px' }}>
-            <label style={{ display: 'block', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>SELECT AURA'S VOICE:</label>
-            <select value={selectedVoiceName} onChange={(e) => setSelectedVoiceName(e.target.value)} style={{ width: '100%', padding: '8px', background: '#0f0d23', color: '#fff', border: '1px solid #5b21b6', borderRadius: '5px', fontSize: '12px', outline: 'none' }}>
+            <label style={{ display: 'block', fontSize: '10px', color: 'var(--aura-muted)', marginBottom: '5px', fontFamily: 'monospace' }}>SELECT AURA'S VOICE:</label>
+            <select 
+              value={selectedVoiceName} 
+              onChange={(e) => setSelectedVoiceName(e.target.value)} 
+              style={{ 
+                width: '100%', padding: '8px', 
+                background: lightMode ? '#ffffff' : '#0f0d23', 
+                color: lightMode ? '#21183c' : '#fff', 
+                border: '1px solid var(--aura-border-bright)', 
+                borderRadius: '5px', fontSize: '12px', outline: 'none' 
+              }}
+            >
               {availableVoices.map((voice, idx) => (<option key={idx} value={voice.name}>{voice.name} ({voice.lang})</option>))}
             </select>
           </div>
 
-          <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '5px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>
+          <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '5px', border: '1px solid var(--aura-border)' }}>
+            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--aura-muted)', marginBottom: '5px', fontFamily: 'monospace' }}>
               <span>USER MEMORY PROFILE:</span>
-              <span style={{ color: '#a78bfa', cursor: 'pointer' }} onClick={() => setUserProfile(getUserProfile())}>↻ REFRESH</span>
+              <span style={{ color: 'var(--aura-violet)', cursor: 'pointer' }} onClick={() => setUserProfile(getUserProfile())}>↻ REFRESH</span>
             </label>
             
-            <p style={{ margin: 0, fontSize: '12px', color: '#fff', fontFamily: 'monospace' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--aura-text)', fontFamily: 'monospace' }}>
               <strong>Name:</strong> {userProfile.name}
             </p>
             
             {userProfile.facts && userProfile.facts.length > 0 ? (
-               <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#d2cbe6', fontFamily: 'monospace' }}>
+               <p style={{ margin: '5px 0 0', fontSize: '11px', color: 'var(--aura-text)', fontFamily: 'monospace' }}>
                  <strong>Facts:</strong>
                  <br/>
                  {userProfile.facts.map((fact, idx) => (
@@ -996,18 +1006,18 @@ const AuraAssistant: React.FC = () => {
                  ))}
                </p>
             ) : (
-              <p style={{ margin: '5px 0 0', fontSize: '10px', color: '#928bac', fontFamily: 'monospace', fontStyle: 'italic' }}>
+              <p style={{ margin: '5px 0 0', fontSize: '10px', color: 'var(--aura-subtle)', fontFamily: 'monospace', fontStyle: 'italic' }}>
                 No additional facts saved yet.
               </p>
             )}
           </div>
 
-          <div style={{ fontSize: '11px', color: '#928bac', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', borderTop: '1px solid #2a2352', paddingTop: '10px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--aura-muted)', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', borderTop: '1px solid var(--aura-border)', paddingTop: '10px' }}>
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
-            {history.length > 0 && <p style={{ color: '#c4b5fd' }}>• Last command: "{history[0].command}"</p>}
-            {embeddedVideo && <p style={{ color: '#67e8f9' }}>• Embedded player active.</p>}
-            {pipOpen && <p style={{ color: '#67e8f9' }}>• Floating Aura window active.</p>}
+            {history.length > 0 && <p style={{ color: 'var(--aura-violet)' }}>• Last command: "{history[0].command}"</p>}
+            {embeddedVideo && <p style={{ color: 'var(--aura-cyan)' }}>• Embedded player active.</p>}
+            {pipOpen && <p style={{ color: 'var(--aura-cyan)' }}>• Floating Aura window active.</p>}
           </div>
           <button type="button" onClick={() => setShowLogs(false)} style={{ marginTop: '15px', width: '100%' }}>Close Settings</button>
         </div>
