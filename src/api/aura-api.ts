@@ -1,66 +1,91 @@
+
 import Groq from "groq-sdk";
 
-const envApiKey = import.meta.env.VITE_GROQ_API_KEY;
-const hardcodedApiKey = "gsk_your_actual_key_here"; 
-const apiKey = envApiKey || hardcodedApiKey;
+const apiKey = import.meta.env.VITE_GROQ_API_KEY as
+  | string
+  | undefined;
 
-const groq = apiKey && apiKey !== "gsk_your_actual_key_here"
-  ? new Groq({ apiKey, dangerouslyAllowBrowser: true })
+const groq = apiKey?.trim()
+  ? new Groq({
+      apiKey: apiKey.trim(),
+      dangerouslyAllowBrowser: true,
+    })
   : null;
 
-// The Fallback Chain: Ordered from most capable to fastest
 const MODEL_FALLBACKS = [
-  "openai/gpt-oss-120b",       // Best for complex reasoning (Quizzes, Code) [citation:2]
-  "openai/gpt-oss-20b",        // Fast, reliable backup [citation:2]
-  "llama-3.1-8b-instant"       // Lightweight, high availability (if available) [citation:2]
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
+  "llama-3.1-8b-instant",
 ];
 
 export const askAI = async (prompt: string): Promise<string> => {
   if (!groq) {
-    return "Error: Groq API key is missing.";
+    return "Groq API key is missing. Please configure your environment.";
   }
 
-  let lastError: any = null;
+  let lastError: unknown;
 
-  // Try each model in the list until one works
   for (const modelName of MODEL_FALLBACKS) {
     try {
-      const chatCompletion = await groq.chat.completions.create({
+      const completion = await groq.chat.completions.create({
         messages: [
           {
             role: "system",
             content:
-              "You are Aura, a highly intelligent, futuristic, and capable AI voice assistant created by Juanito Tamboong. " +
-              "You must be helpful, slightly sassy, and highly capable. " +
-              "CRITICAL: If the user asks for a quiz, a story, a list, or code, YOU MUST GENERATE IT directly in your response. Do not refuse. " +
-              "Keep your spoken answers natural and engaging.",
+              "You are Aura, a capable futuristic AI voice assistant. " +
+              "Be helpful, natural, concise, and slightly witty. " +
+              "Generate requested quizzes, stories, lists, and code directly. " +
+              "Keep spoken responses clear and conversational.",
           },
-          { role: "user", content: prompt },
+          {
+            role: "user",
+            content: prompt,
+          },
         ],
-        model: modelName, // Use the current model in the loop
-        temperature: 0.8,
-        max_tokens: 800, // High token limit for quizzes and stories
+        model: modelName,
+        temperature: 0.7,
+        max_tokens: 800,
       });
 
-      // If successful, return the response immediately
-      const reply = chatCompletion.choices[0]?.message?.content;
-      if (reply) {
-        console.log(`[Aura] Successfully used model: ${modelName}`);
-        return reply;
+      const reply = completion.choices[0]?.message?.content;
+
+      if (typeof reply === "string" && reply.trim()) {
+        console.info(`[Aura] AI response received using ${modelName}`);
+        return reply.trim();
       }
-    } catch (error: any) {
-      console.warn(`[Aura] Model ${modelName} failed. Trying next...`, error.message);
+
+      lastError = new Error(`Model ${modelName} returned an empty response.`);
+    } catch (error: unknown) {
       lastError = error;
-      
-      // If it's a 401 (Auth error), don't bother trying other models. The key is wrong.
-      if (error.status === 401) {
-        return "My API key is invalid. Please check the Groq API key.";
+
+      const apiError = error as {
+        status?: number;
+        message?: string;
+      };
+
+      console.error(
+        `[Aura] Model ${modelName} failed:`,
+        apiError.message ?? "Unknown API error"
+      );
+
+      if (apiError.status === 401) {
+        return "My Groq API key is invalid. Please check your API configuration.";
       }
-      
-      // If it's a rate limit or 404, the loop will automatically try the next model.
+
+      if (apiError.status === 403) {
+        return "Groq access was denied. Please check your API permissions.";
+      }
+
+      // Try the next model for other errors.
     }
   }
 
-  // If all models failed, return the last error
-  return `System Error: All AI models are currently offline. (${lastError?.message || "Unknown error"})`;
+  const message =
+    lastError instanceof Error
+      ? lastError.message
+      : "Unknown error";
+
+  console.error("[Aura] All fallback models failed:", message);
+
+  return "I'm having trouble connecting to my AI service. Please try again.";
 };

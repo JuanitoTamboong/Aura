@@ -491,12 +491,20 @@ const AuraAssistant: React.FC = () => {
 
   const runCommand = useCallback(
     (command: string) => {
-      const cleaned = command.trim();
+      // ★ FIX: Strip out "aura", "hey aura", etc. from the command so the AI doesn't get confused
+      const cleaned = command.trim().replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
+      
       if (!cleaned || cleaned.length < 2) return;
+
+      console.log("[Aura] Processing command:", cleaned);
 
       addHistory(cleaned);
       setTranscriptText(`"${cleaned}"`);
       setStatusText("PROCESSING COMMAND");
+
+      if (autoCloseTimeoutRef.current) {
+        clearTimeout(autoCloseTimeoutRef.current);
+      }
 
       try {
         processCommand({

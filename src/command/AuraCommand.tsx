@@ -65,7 +65,7 @@ export const processCommand = async ({
     return "Stopped.";
   }
 
-  // ★ NEW: IGNORE WAKE WORD IF IT SLIPS THROUGH
+  // ★ IGNORE WAKE WORD IF IT SLIPS THROUGH
   if (/^(wake up|aura|hey aura|okay aura|wake up aura|hey aur+a)$/i.test(lowerCmd)) {
     return ""; // Silently ignore and do nothing
   }
@@ -113,9 +113,12 @@ export const processCommand = async ({
 
   setStatusText("PROCESSING COMMAND");
 
-  const command = originalCommand.replace(/^\s*aura[\s,.:;-]+/i, "").trim();
+  // ★ FIXED: This now strips "aura" from ANYWHERE in the string, not just the beginning.
+  const command = originalCommand.replace(/\baura\b/gi, "").replace(/^\s*[\s,.:;-]+/, "").trim();
   const text = command || originalCommand;
-  const normalized = text.toLowerCase();
+  
+  // ★ FIXED: Clean the prompt sent to the AI so it doesn't say "Hello!"
+  const normalized = text.toLowerCase().replace(/\b(aur+a|hey aura|okay aura)\b/gi, "").trim();
 
   const respond = async (
     spoken: string, 
@@ -172,17 +175,15 @@ export const processCommand = async ({
       }
     }
 
-    // 3. SAVE FACTS (UPDATED: Clean out pronouns and filler words)
+    // 3. SAVE FACTS
     if (/\b(remember|keep in mind|tandaan mo|remember that)\b/i.test(normalized)) {
       let fact = originalCommand.replace(/\b(remember|that|keep in mind|tandaan mo)\b/gi, "").trim();
       
-      // Strip out filler words like "this", "my", "the", "aura"
       fact = fact
         .replace(/\b(aura|this|my|the|a|an)\b/gi, "")
         .replace(/\s+/g, ' ')
         .trim();
         
-      // Capitalize first letter for a clean look
       fact = fact.charAt(0).toUpperCase() + fact.slice(1);
 
       if (fact.length > 0) {
@@ -211,21 +212,50 @@ export const processCommand = async ({
       }
     }
 
-    // 4. CHECK DATABASE
+    // 4. CHECK DATABASE (★ FIXED BUG HERE)
     if (auraDatabase?.commands) {
-      const isSystemCommand = /\b(search|google|youtube|play|open|facebook|gmail|netflix|github)\b/i.test(normalized);
+      const isSystemCommand =
+        /\b(search|google|youtube|play|open|facebook|gmail|netflix|github)\b/i.test(
+          normalized
+        );
+
       if (!isSystemCommand) {
-        const sortedKeys = Object.keys(auraDatabase.commands).sort((a, b) => b.length - a.length);
+        const sortedKeys = Object.keys(auraDatabase.commands).sort(
+          (a, b) => b.length - a.length
+        );
+
         for (const key of sortedKeys) {
           const dbCommand = auraDatabase.commands[key];
-          const keyLower = key.toLowerCase();
-          if (normalized.includes(keyLower)) {
-            return await respond(dbCommand.speak, { title: dbCommand.title, category: dbCommand.category, data: dbCommand.speak });
+
+          if (typeof dbCommand?.speak !== "string") {
+            continue;
           }
-          const keywords = keyLower.split(" ");
-          const matchedAllKeywords = keywords.length > 1 && keywords.every((word: string) => normalized.includes(word));
-          if (matchedAllKeywords) {
-             return await respond(dbCommand.speak, { title: dbCommand.title, category: dbCommand.category, data: dbCommand.speak });
+
+          const escapedKey = key
+            .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+            .replace(/\s+/g, "\\s+");
+
+          const exactPhrase = new RegExp(
+            `\\b${escapedKey}\\b`,
+            "i"
+          );
+
+          // Greetings should match only a greeting command,
+          // not a word inside a longer question.
+          const isGreeting = /^(hi|hey|hello|greetings)[.!?,\s]*$/i.test(
+            normalized
+          );
+
+          if (
+            exactPhrase.test(normalized) &&
+            (!/^(hi|hey|hello|greetings)$/i.test(key) ||
+              isGreeting)
+          ) {
+            return await respond(dbCommand.speak, {
+              title: dbCommand.title || key,
+              category: dbCommand.category || "Conversation",
+              data: dbCommand.speak,
+            });
           }
         }
       }
@@ -318,7 +348,7 @@ export const processCommand = async ({
       }
     }
 
-    // 10. AI FALLBACK (UPDATED TO INJECT FACTS)
+    // 10. AI FALLBACK
     setCommandDetails({ title: text.toUpperCase(), category: "AI Knowledge", match: "...", type: "text", data: "Thinking..." });
 
     const history = getConversationForPrompt(); 
@@ -331,26 +361,26 @@ export const processCommand = async ({
 
     const profile = getUserProfile();
     
-    // Format the facts into a bulleted list
     const factsList = profile.facts && profile.facts.length > 0 
       ? `\nHere is a list of facts you remember about the user:\n- ${profile.facts.join("\n- ")}\n` 
       : "";
 
-    // ★ CHANGED: Updated prompt to keep Aura concise and prevent roleplay asterisks
+    // ★ FIXED PROMPT: Removed the conversation history wrapper that caused the AI to say "Hello!"
     let promptWithContext = "";
     if (history) {
       promptWithContext = 
         `You are Aura, a highly capable AI terminal assistant. The user is ${profile.name}.${factsList}\n` +
         `Keep your responses direct, helpful, and concise. Do not use roleplay asterisks like *stretching* or emojis unless explicitly asked.\n` +
-        `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n` +
-        `Answer the new user message directly.\n\n` +
+        `DO NOT GREET THE USER. Answer the question directly.\n` +
+        `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n\n` +
         `--- Recent conversation ---\n${history}\n--- End of conversation ---\n\n` +
         `User: ${enhancedPrompt}\nAura:`;
     } else {
       promptWithContext = 
         `You are Aura, a highly capable AI terminal assistant. The user is ${profile.name}.${factsList}\n` +
         `Keep your responses direct, helpful, and concise. Do not use roleplay asterisks like *stretching* or emojis unless explicitly asked.\n` +
-        `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n` +
+        `DO NOT GREET THE USER. Answer the question directly.\n` +
+        `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n\n` +
         `User: ${enhancedPrompt}\nAura:`;
     }
 
