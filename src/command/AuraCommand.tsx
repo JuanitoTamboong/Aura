@@ -65,6 +65,11 @@ export const processCommand = async ({
     return "Stopped.";
   }
 
+  // ★ NEW: IGNORE WAKE WORD IF IT SLIPS THROUGH
+  if (/^(wake up|aura|hey aura|okay aura|wake up aura|hey aur+a)$/i.test(lowerCmd)) {
+    return ""; // Silently ignore and do nothing
+  }
+
   // 0.25 WAIT / HOLD ON
   if (/\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/.test(lowerCmd)) {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -331,17 +336,20 @@ export const processCommand = async ({
       ? `\nHere is a list of facts you remember about the user:\n- ${profile.facts.join("\n- ")}\n` 
       : "";
 
+    // ★ CHANGED: Updated prompt to keep Aura concise and prevent roleplay asterisks
     let promptWithContext = "";
     if (history) {
       promptWithContext = 
-        `You are Aura. The user is ${profile.name}. You are a highly capable AI.${factsList}\n` +
+        `You are Aura, a highly capable AI terminal assistant. The user is ${profile.name}.${factsList}\n` +
+        `Keep your responses direct, helpful, and concise. Do not use roleplay asterisks like *stretching* or emojis unless explicitly asked.\n` +
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n` +
-        `Answer the new user message directly. Be conversational and smart.\n\n` +
+        `Answer the new user message directly.\n\n` +
         `--- Recent conversation ---\n${history}\n--- End of conversation ---\n\n` +
         `User: ${enhancedPrompt}\nAura:`;
     } else {
       promptWithContext = 
-        `You are Aura. The user is ${profile.name}. You are a highly capable AI.${factsList}\n` +
+        `You are Aura, a highly capable AI terminal assistant. The user is ${profile.name}.${factsList}\n` +
+        `Keep your responses direct, helpful, and concise. Do not use roleplay asterisks like *stretching* or emojis unless explicitly asked.\n` +
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n` +
         `User: ${enhancedPrompt}\nAura:`;
     }

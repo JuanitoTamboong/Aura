@@ -17,6 +17,7 @@ import {
   FaArrowRight,
   FaTrash,
   FaXmark,
+  FaPowerOff, // ★ NEW
 } from "react-icons/fa6";
 
 import { FaRegMoon } from "react-icons/fa";
@@ -53,9 +54,11 @@ const INITIAL_DETAILS: CommandDetails = {
 };
 
 type BootStage = "splash" | "welcome" | "ready";
+type MicMode = "off" | "standby" | "active"; // ★ NEW
 
 const STOP_WORDS = /\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/i;
 const WAIT_WORDS = /\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/i;
+const WAKE_WORDS = /\b(aur+a|aura|hey aura|okay aura|wake up|wake up aura|aura wake up|hey aur+a)\b/i; // ★ NEW
 
 const Typewriter = ({ 
   text, 
@@ -132,6 +135,10 @@ const AuraAssistant: React.FC = () => {
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
 
+  // ★ NEW — hands-free / wake-word state
+  const [handsFree, setHandsFree] = useState(false);
+  const [micMode, setMicMode] = useState<MicMode>("off");
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const modalCanvasRef = useRef<HTMLCanvasElement | null>(null); 
   
@@ -147,7 +154,24 @@ const AuraAssistant: React.FC = () => {
   const mountedRef = useRef(true);
   const lastCommandTextRef = useRef("");
   
+  const ignoreMicRef = useRef(false);
+  const stopRequestedRef = useRef(false);
   const autoCloseTimeoutRef = useRef<any>(null);
+
+  // ★ NEW — refs mirroring hands-free state
+  const micModeRef = useRef<MicMode>("off");
+  const handsFreeRef = useRef(false);
+  const wakeCooldownRef = useRef(false);
+
+  // Load user's name on boot
+  useEffect(() => {
+    const profile = getUserProfile();
+    if (profile.name && profile.name !== "Operator") {
+      setTranscriptText(`Awaiting your command, ${profile.name}.`);
+    } else {
+      setTranscriptText("Awaiting your command, operator.");
+    }
+  }, []);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -161,6 +185,15 @@ const AuraAssistant: React.FC = () => {
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
+
+  // ★ NEW — keep refs in sync with state
+  useEffect(() => {
+    micModeRef.current = micMode;
+  }, [micMode]);
+
+  useEffect(() => {
+    handsFreeRef.current = handsFree;
+  }, [handsFree]);
 
   useEffect(() => {
     const loadVoices = () => {
@@ -247,7 +280,8 @@ const AuraAssistant: React.FC = () => {
         const cx = width / 2;
         const cy = height / 2;
         const radius = Math.min(width, height) * 0.32;
-        const active = isListeningRef.current || window.speechSynthesis.speaking;
+        const active =
+          micModeRef.current === "active" || window.speechSynthesis.speaking; // ★ CHANGED
 
         phase += active ? 0.045 : 0.012;
 
@@ -343,6 +377,9 @@ const AuraAssistant: React.FC = () => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
     window.speechSynthesis.cancel();
+    
+    // Mute the mic while Aura is speaking to prevent feedback loop
+    ignoreMicRef.current = true;
 
     const warmUp = new SpeechSynthesisUtterance(" ");
     warmUp.volume = 0;
@@ -358,6 +395,8 @@ const AuraAssistant: React.FC = () => {
       if (chosenVoice) utterance.voice = chosenVoice;
 
       utterance.onend = () => {
+        // Unmute the mic when Aura is done speaking
+        ignoreMicRef.current = false; 
         if (isListeningRef.current) {
           setStatusText((prev) => (prev === "SPEAKING" ? "LISTENING" : prev));
         }
@@ -385,11 +424,14 @@ const AuraAssistant: React.FC = () => {
   }, []);
 
   const stopMic = useCallback(() => {
+    stopRequestedRef.current = true;
     isListeningRef.current = false;
     setIsListening(false);
+    
     try {
       recognitionRef.current?.stop();
     } catch {}
+    
     setStatusText("SYSTEM ONLINE");
   }, []);
 
@@ -403,6 +445,47 @@ const AuraAssistant: React.FC = () => {
         setShowResponseModal(false);
       }
     }, 3000);
+  }, []);
+
+  // ★ NEW — mode transition helpers
+  const enterActiveMode = useCallback(() => {
+    if (micModeRef.current === "active") return;
+    micModeRef.current = "active";
+    setMicMode("active");
+    setIsListening(true);
+    isListeningRef.current = true;
+    setStatusText("LISTENING");
+    setTranscriptText("I'm listening. Say your command.");
+    
+    // ★ FIX: Flush the audio buffer so the wake word isn't sent as a command
+    try {
+      recognitionRef.current?.abort(); 
+      setTimeout(() => { recognitionRef.current?.start(); }, 100);
+    } catch {}
+
+    auraSpeak("I'm listening.");
+  }, [auraSpeak]);
+
+  const enterStandbyMode = useCallback(() => {
+    micModeRef.current = "standby";
+    setMicMode("standby");
+    setIsListening(false);
+    isListeningRef.current = false;
+    setStatusText("STANDBY");
+    setTranscriptText("Say 'Aura, wake up' to begin.");
+  }, []);
+
+  const exitHandsFree = useCallback(() => {
+    micModeRef.current = "off";
+    setMicMode("off");
+    setHandsFree(false);
+    handsFreeRef.current = false;
+    setIsListening(false);
+    isListeningRef.current = false;
+    stopRequestedRef.current = true;
+    try { recognitionRef.current?.abort(); } catch {}
+    setStatusText("SYSTEM ONLINE");
+    setTranscriptText("Voice mode off. Click INITIATE VOICE to restart.");
   }, []);
 
   const runCommand = useCallback(
@@ -483,8 +566,45 @@ const AuraAssistant: React.FC = () => {
 
         const heardText = `${interim} ${finalCommands.join(" ")}`.toLowerCase();
 
+        // ★ NEW — STANDBY MODE: only listen for wake phrase
+        if (micModeRef.current === "standby") {
+          if (WAKE_WORDS.test(heardText) && !wakeCooldownRef.current) {
+            wakeCooldownRef.current = true;
+            setTimeout(() => { wakeCooldownRef.current = false; }, 2500);
+
+            setTranscriptText(`"${heardText}" → waking up...`);
+            enterActiveMode();
+            lastCommandTextRef.current = "";
+          } else if (interim) {
+            setTranscriptText(`Hearing: "${interim}" — say "Aura, wake up"`);
+          }
+          return; // do NOT process as command while in standby
+        }
+
+        // ---- ACTIVE MODE (existing behavior) ----
+
         if (STOP_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
+
+          // ★ NEW — in hands-free, "stop" returns to standby
+          if (handsFreeRef.current) {
+            clearConversation();
+            setEmbeddedVideo(null);
+            setCommandDetails({
+              title: "Standing By",
+              category: "Awaiting Wake Word",
+              match: "100%",
+              type: "text",
+              data: "Say 'Aura, wake up' to resume.",
+            });
+            setShowResponseModal(false);
+            if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+            lastCommandTextRef.current = "";
+            enterStandbyMode();
+            return;
+          }
+
+          // Original behavior when not in hands-free
           stopMic(); 
           clearConversation();
           setEmbeddedVideo(null);
@@ -517,7 +637,7 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
-        if (window.speechSynthesis.speaking) {
+        if (window.speechSynthesis.speaking || ignoreMicRef.current) {
           return; 
         }
 
@@ -560,20 +680,26 @@ const AuraAssistant: React.FC = () => {
       };
 
       recognition.onend = () => {
-        if (!isListeningRef.current) {
+        const mode = micModeRef.current;
+        // ★ CHANGED — also auto-restart in standby
+        if ((mode === "standby" || mode === "active") && !stopRequestedRef.current) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error("Mic auto-restart failed:", e);
+          }
+        } else {
           setStatusText((previous: string) =>
-            previous === "LISTENING" ? "SYSTEM ONLINE" : previous
+            previous === "LISTENING" || previous === "STANDBY"
+              ? "SYSTEM ONLINE"
+              : previous
           );
-          return;
         }
-        try {
-          recognition.start();
-        } catch {}
       };
 
       recognitionRef.current = recognition;
     },
-    [runCommand]
+    [runCommand, stopMic, enterActiveMode, enterStandbyMode]
   );
 
   useEffect(() => {
@@ -585,8 +711,47 @@ const AuraAssistant: React.FC = () => {
     };
   }, [setupSpeechRecognition]);
 
+  // ★ NEW — start hands-free mode
+  const startHandsFree = useCallback(() => {
+    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+      setStatusText("NOT SUPPORTED");
+      setTranscriptText("Your browser does not support speech recognition.");
+      return;
+    }
+
+    setHandsFree(true);
+    handsFreeRef.current = true;
+    stopRequestedRef.current = false;
+    lastCommandTextRef.current = "";
+    wakeCooldownRef.current = false;
+    
+    setupSpeechRecognition(window);
+
+    try {
+      recognitionRef.current.start();
+      enterStandbyMode();
+      auraSpeak("Hands free mode active. Say Aura, wake up.");
+    } catch (err) {
+      console.error("Hands-free start failed:", err);
+      setStatusText("MIC UNAVAILABLE");
+    }
+  }, [setupSpeechRecognition, enterStandbyMode, auraSpeak]);
+
   const toggleMic = useCallback(() => {
+    // ★ NEW — hands-free button behavior
+    if (handsFreeRef.current) {
+      if (micModeRef.current === "standby") {
+        enterActiveMode();
+        return;
+      }
+      window.speechSynthesis.cancel();
+      exitHandsFree();
+      return;
+    }
+
+    // ---- ORIGINAL behavior when not in hands-free ----
     if (isListeningRef.current) {
+      stopRequestedRef.current = true;
       isListeningRef.current = false;
       setIsListening(false);
       try { recognitionRef.current?.abort(); } catch {}
@@ -600,6 +765,7 @@ const AuraAssistant: React.FC = () => {
       return;
     }
 
+    stopRequestedRef.current = false; 
     setStatusText("INITIALIZING...");
     window.speechSynthesis.cancel();
     lastCommandTextRef.current = ""; 
@@ -616,7 +782,7 @@ const AuraAssistant: React.FC = () => {
       console.error("Could not start voice recognition:", error);
       setStatusText("MICROPHONE UNAVAILABLE");
     }
-  }, [setupSpeechRecognition]);
+  }, [setupSpeechRecognition, enterActiveMode, exitHandsFree]);
 
   const handlePopOut = useCallback(async () => {
     const browser = window as any;
@@ -716,9 +882,21 @@ const AuraAssistant: React.FC = () => {
       const pipStatus = pipWindow.document.getElementById("auraPipStatus");
       const pipMic = pipWindow.document.getElementById("auraPipMic");
 
+      // ★ CHANGED — reflect mic mode in PiP
       const updatePip = () => {
-        if (pipStatus) pipStatus.textContent = isListeningRef.current ? "LISTENING..." : "AURA IS READY";
-        if (pipMic) pipMic.textContent = isListeningRef.current ? "STOP LISTENING" : "START VOICE COMMAND";
+        const mode = micModeRef.current;
+        if (pipStatus) {
+          pipStatus.textContent =
+            mode === "active" ? "LISTENING..." :
+            mode === "standby" ? "SAY 'AURA WAKE UP'" :
+            "AURA IS READY";
+        }
+        if (pipMic) {
+          pipMic.textContent =
+            mode === "active" ? "END SESSION" :
+            mode === "standby" ? "WAKE NOW" :
+            "START VOICE COMMAND";
+        }
       };
 
       updatePip();
@@ -810,6 +988,12 @@ const AuraAssistant: React.FC = () => {
   if (bootStage === "splash") return <SplashScreen onComplete={() => setBootStage("welcome")} />;
   if (bootStage === "welcome") return <WelcomeScreen onComplete={() => setBootStage("ready")} />;
 
+  // ★ NEW — orb class computed from micMode
+  const orbClass =
+    micMode === "active" ? "listening-active" :
+    micMode === "standby" ? "orb-standby" :
+    "orb-glow";
+
   return (
     <div className={`aura-app ${lightMode ? "aura-light" : ""}`}>
       <div className="aura-scanlines" aria-hidden="true" />
@@ -858,7 +1042,7 @@ const AuraAssistant: React.FC = () => {
               position: "relative"
             }}>
               <div 
-                className={`aura-orb ${statusText === "SPEAKING" || isListening ? "listening-active" : "orb-glow"}`} 
+                className={`aura-orb ${statusText === "SPEAKING" || micMode === "active" ? "listening-active" : "orb-glow"}`} 
                 style={{ width: "100%", marginBottom: "20px" }}
               >
                 <div className="aura-orb-grid" aria-hidden="true" />
@@ -961,6 +1145,15 @@ const AuraAssistant: React.FC = () => {
 
         <div className="aura-header-actions">
           <button type="button" className="aura-icon-button" title="System Logs" onClick={() => setShowLogs((value) => !value)}><FaTerminal /></button>
+          {/* ★ NEW — hands-free toggle */}
+          <button
+            type="button"
+            className={`aura-icon-button ${handsFree ? "is-active" : ""}`}
+            title={handsFree ? "Disable hands-free (Aura wake up)" : "Enable hands-free (Aura wake up)"}
+            onClick={() => (handsFree ? exitHandsFree() : startHandsFree())}
+          >
+            <FaPowerOff />
+          </button>
           <button type="button" className="aura-icon-button" title="Toggle appearance" onClick={() => setLightMode((value) => !value)}><FaRegMoon /></button>
           <button type="button" className={`aura-icon-button ${pipOpen ? "is-active" : ""}`} title="Open floating Aura" onClick={handlePopOut} disabled={pipOpen}><FaUpRightFromSquare /></button>
         </div>
@@ -1015,6 +1208,8 @@ const AuraAssistant: React.FC = () => {
           <div style={{ fontSize: '11px', color: 'var(--aura-muted)', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', borderTop: '1px solid var(--aura-border)', paddingTop: '10px' }}>
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
+            {/* ★ NEW — hands-free status in logs */}
+            {handsFree && <p style={{ color: 'var(--aura-violet)' }}>• Hands-free mode active ({micMode}).</p>}
             {history.length > 0 && <p style={{ color: 'var(--aura-violet)' }}>• Last command: "{history[0].command}"</p>}
             {embeddedVideo && <p style={{ color: 'var(--aura-cyan)' }}>• Embedded player active.</p>}
             {pipOpen && <p style={{ color: 'var(--aura-cyan)' }}>• Floating Aura window active.</p>}
@@ -1067,7 +1262,8 @@ const AuraAssistant: React.FC = () => {
 
           <div className="aura-core-stage" ref={centerPlaceholderRef}>
             <div className="aura-core-content" ref={centerContentRef}>
-              <div id="orbContainer" className={`aura-orb ${isListening ? "listening-active" : "orb-glow"}`}>
+              {/* ★ CHANGED — orb class from micMode */}
+              <div id="orbContainer" className={`aura-orb ${orbClass}`}>
                 <div className="aura-orb-grid" aria-hidden="true" />
                 <div className="aura-orb-ring aura-orb-ring-one" />
                 <div className="aura-orb-ring aura-orb-ring-two" />
@@ -1077,23 +1273,41 @@ const AuraAssistant: React.FC = () => {
                 <span className="aura-orb-cross aura-orb-cross-two" />
               </div>
 
+              {/* ★ CHANGED — greeting reflects mode */}
               <div className="aura-greeting">
-                <span className="aura-eyebrow">{isListening ? "AUDIO INPUT ACTIVE" : "AWAITING INPUT"}</span>
-                <h2>{isListening ? <>I'm <span>listening.</span></> : <>Enter the <span>unknown.</span></>}</h2>
+                <span className="aura-eyebrow">
+                  {micMode === "active" ? "AUDIO INPUT ACTIVE"
+                   : micMode === "standby" ? "STANDING BY"
+                   : "AWAITING INPUT"}
+                </span>
+                <h2>
+                  {micMode === "active" ? <>I'm <span>listening.</span></>
+                   : micMode === "standby" ? <>Say <span>"Aura, wake up"</span></>
+                   : <>Enter the <span>unknown.</span></>}
+                </h2>
                 <p id="transcriptText">{transcriptText}</p>
               </div>
 
               <div className="aura-status-line">
-                <span className={`aura-status-indicator ${isListening ? "active" : ""}`} />
+                <span className={`aura-status-indicator ${micMode === "active" ? "active" : ""}`} />
                 <span id="statusText">{statusText}</span>
               </div>
 
-              <button type="button" id="micBtn" className={`aura-mic-button ${isListening ? "is-listening" : ""}`} onClick={toggleMic}>
-                {isListening ? <FaStop /> : <FaMicrophone />}
-                <span>{isListening ? "END SESSION" : "INITIATE VOICE"}</span>
+              {/* ★ CHANGED — button text reflects mode */}
+              <button type="button" id="micBtn" className={`aura-mic-button ${micMode === "active" ? "is-listening" : ""}`} onClick={toggleMic}>
+                {micMode === "active" ? <FaStop /> : <FaMicrophone />}
+                <span>
+                  {micMode === "active" ? "END SESSION"
+                   : micMode === "standby" ? "WAKE NOW"
+                   : "INITIATE VOICE"}
+                </span>
               </button>
 
-              <p className="aura-mic-hint">{isListening ? "SPEAK CLEARLY · PRESS TO STOP" : "CLICK TO TRANSMIT YOUR COMMAND"}</p>
+              <p className="aura-mic-hint">
+                {micMode === "active" ? "SPEAK CLEARLY · PRESS TO STOP"
+                 : micMode === "standby" ? "HANDS-FREE ARMED · SAY 'AURA, WAKE UP'"
+                 : "CLICK TO TRANSMIT YOUR COMMAND"}
+              </p>
             </div>
           </div>
 
