@@ -11,6 +11,39 @@ const CONTEXT_TTL_MS = 1000 * 60 * 5; // 5 minutes
 
 let turns: ConversationTurn[] = [];
 
+// --- NEW: User Profile Memory ---
+export interface UserProfile {
+  name: string;
+  facts: string[]; // Things Aura learns about you
+}
+
+const defaultProfile: UserProfile = {
+  name: "Operator", // Default if Aura doesn't know your name
+  facts: []
+};
+
+// Load profile from browser memory on startup
+const loadProfile = (): UserProfile => {
+  try {
+    const saved = localStorage.getItem("aura_user_profile");
+    return saved ? JSON.parse(saved) : defaultProfile;
+  } catch {
+    return defaultProfile;
+  }
+};
+
+let userProfile: UserProfile = loadProfile();
+
+export const getUserProfile = (): UserProfile => {
+  return userProfile;
+};
+
+export const saveUserProfile = (profile: Partial<UserProfile>) => {
+  userProfile = { ...userProfile, ...profile };
+  localStorage.setItem("aura_user_profile", JSON.stringify(userProfile));
+};
+// ---------------------------------
+
 const pushTurn = (turn: ConversationTurn) => {
   turns.push(turn);
   if (turns.length > MAX_TURNS) {
@@ -42,6 +75,7 @@ export const hasRecentConversation = (): boolean => {
 
 export const clearConversation = () => {
   turns = [];
+  // Note: We don't clear the user profile here, so Aura still remembers your name after clearing chat.
 };
 
 export const getConversationForPrompt = (): string => {
