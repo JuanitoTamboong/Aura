@@ -16,6 +16,7 @@ import {
   FaBolt,
   FaArrowRight,
   FaTrash,
+  FaXmark,
 } from "react-icons/fa6";
 
 import { FaRegMoon } from "react-icons/fa";
@@ -60,32 +61,51 @@ const STOP_WORDS = /\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|ab
 const WAIT_WORDS = /\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/i;
 
 // =========================================================
-// TYPEWRITER COMPONENT WITH MARKDOWN CLEANER
+// TYPEWRITER COMPONENT
 // =========================================================
-const Typewriter = ({ text, speed = 15 }: { text: string, speed?: number }) => {
+const Typewriter = ({ 
+  text, 
+  speed = 12, 
+  onComplete 
+}: { 
+  text: string; 
+  speed?: number; 
+  onComplete?: () => void 
+}) => {
   const [displayedText, setDisplayedText] = useState("");
   
   useEffect(() => {
-    setDisplayedText(""); // Reset when text changes
+    setDisplayedText(""); 
     if (!text) return;
 
-    // CLEAN THE TEXT: Remove asterisks, hashes, and long dashes
     const cleanedText = text
-      .replace(/\*\*/g, "")       // Remove bold asterisks
-      .replace(/\*/g, "")         // Remove italic asterisks
-      .replace(/^#+\s/gm, "")     // Remove markdown headers (#)
-      .replace(/---+/g, "")       // Remove horizontal lines
-      .replace(/^\s*-\s+/gm, "• "); // Turn markdown list dashes into bullet points
+      .replace(/<[^>]*>?/gm, '') 
+      .replace(/^#+\s/gm, "")     
+      .replace(/\*\*/g, "")       
+      .replace(/\*/g, "")         
+      .replace(/---+/g, "")       
+      .replace(/^\s*-\s+/gm, "• ");
 
     let i = 0;
+    let isCancelled = false;
+
     const intervalId = setInterval(() => {
-      setDisplayedText((prev) => prev + cleanedText.charAt(i));
+      if (isCancelled) return;
+      
+      setDisplayedText(cleanedText.slice(0, i + 1));
       i++;
-      if (i >= cleanedText.length) clearInterval(intervalId);
+      
+      if (i >= cleanedText.length) {
+        clearInterval(intervalId);
+        if (onComplete) onComplete();
+      }
     }, speed);
 
-    return () => clearInterval(intervalId);
-  }, [text, speed]);
+    return () => {
+      isCancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [text, speed, onComplete]);
 
   return <>{displayedText}</>;
 };
@@ -108,6 +128,10 @@ const AuraAssistant: React.FC = () => {
   const [lightMode, setLightMode] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
 
+  // Popup Modal State
+  const [showResponseModal, setShowResponseModal] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
   const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
 
   // Voice Selection State
@@ -115,6 +139,8 @@ const AuraAssistant: React.FC = () => {
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const modalCanvasRef = useRef<HTMLCanvasElement | null>(null); 
+  
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
   const historyIdRef = useRef(0);
@@ -122,9 +148,22 @@ const AuraAssistant: React.FC = () => {
   const centerPlaceholderRef = useRef<HTMLDivElement | null>(null);
   const mainAnimationRef = useRef<number>(0);
   const pipAnimationRef = useRef<number>(0);
+  const modalAnimationRef = useRef<number>(0);
   const pipWindowRef = useRef<Window | null>(null);
   const mountedRef = useRef(true);
   const lastCommandTextRef = useRef("");
+  
+  const autoCloseTimeoutRef = useRef<any>(null);
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 760);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
     isListeningRef.current = isListening;
@@ -162,6 +201,8 @@ const AuraAssistant: React.FC = () => {
       window.speechSynthesis?.cancel();
       cancelAnimationFrame(mainAnimationRef.current);
       cancelAnimationFrame(pipAnimationRef.current);
+      cancelAnimationFrame(modalAnimationRef.current);
+      if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
     };
   }, []);
 
@@ -216,7 +257,7 @@ const AuraAssistant: React.FC = () => {
         const cx = width / 2;
         const cy = height / 2;
         const radius = Math.min(width, height) * 0.32;
-        const active = isListeningRef.current;
+        const active = isListeningRef.current || window.speechSynthesis.speaking;
 
         phase += active ? 0.045 : 0.012;
 
@@ -302,6 +343,12 @@ const AuraAssistant: React.FC = () => {
     return startAnimation(canvas, mainAnimationRef, window);
   }, [startAnimation, bootStage]);
 
+  useEffect(() => {
+    if (showResponseModal && !isMobile && modalCanvasRef.current) {
+      return startAnimation(modalCanvasRef.current, modalAnimationRef, window);
+    }
+  }, [showResponseModal, startAnimation, isMobile]);
+
   // ---------------------------------------------------------
   // SPEECH OUTPUT
   // ---------------------------------------------------------
@@ -362,6 +409,18 @@ const AuraAssistant: React.FC = () => {
     setStatusText("SYSTEM ONLINE");
   }, []);
 
+  const handleTypingComplete = useCallback(() => {
+    if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+    
+    autoCloseTimeoutRef.current = setTimeout(() => {
+      if (window.speechSynthesis.speaking) {
+        handleTypingComplete();
+      } else {
+        setShowResponseModal(false);
+      }
+    }, 3000);
+  }, []);
+
   const runCommand = useCallback(
     (command: string) => {
       const cleaned = command.trim();
@@ -382,13 +441,21 @@ const AuraAssistant: React.FC = () => {
           setEmbeddedVideo,
           stopMic,
         });
+        
+        // ONLY SHOW MODAL ON DESKTOP
+        if (!isMobile) {
+          setTimeout(() => {
+            setShowResponseModal(true);
+          }, 300);
+        }
+
       } catch (error) {
         console.error("Aura command failed:", error);
         setStatusText("COMMAND ERROR");
         setTranscriptText("Unable to process this command. Please try again.");
       }
     },
-    [addHistory, auraSpeak, stopMic]
+    [addHistory, auraSpeak, stopMic, isMobile]
   );
 
   // ---------------------------------------------------------
@@ -434,16 +501,9 @@ const AuraAssistant: React.FC = () => {
 
         const heardText = `${interim} ${finalCommands.join(" ")}`.toLowerCase();
 
-        // ============================================================
-        // INTERRUPT HANDLING
-        // ============================================================
-        
-        // "stop" → full halt, CLOSE MIC
         if (STOP_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
-          
-          stopMic(); // <--- Closes the mic!
-          
+          stopMic(); 
           clearConversation();
           setEmbeddedVideo(null);
           setTranscriptText(`Stopped.`); 
@@ -454,14 +514,14 @@ const AuraAssistant: React.FC = () => {
             type: "text",
             data: "System paused. Click INITIATE VOICE to start a new session.",
           });
+          setShowResponseModal(false); 
+          if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
           lastCommandTextRef.current = ""; 
           return;
         }
 
-        // "wait" → pause speech, KEEP MIC ALIVE
         if (WAIT_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
-          
           setStatusText("LISTENING");
           setTranscriptText(`Waiting...`); 
           setCommandDetails({
@@ -474,10 +534,6 @@ const AuraAssistant: React.FC = () => {
           lastCommandTextRef.current = ""; 
           return;
         }
-
-        // ============================================================
-        // NORMAL COMMAND FLOW
-        // ============================================================
 
         if (window.speechSynthesis.speaking) {
           return; 
@@ -506,7 +562,6 @@ const AuraAssistant: React.FC = () => {
 
       recognition.onerror = (event: any) => {
         if (event.error === "no-speech" || event.error === "aborted") return;
-
         isListeningRef.current = false;
         setIsListening(false);
 
@@ -529,7 +584,6 @@ const AuraAssistant: React.FC = () => {
           );
           return;
         }
-
         try {
           recognition.start();
         } catch {}
@@ -542,7 +596,6 @@ const AuraAssistant: React.FC = () => {
 
   useEffect(() => {
     setupSpeechRecognition(window);
-
     return () => {
       try {
         recognitionRef.current?.abort();
@@ -558,12 +611,17 @@ const AuraAssistant: React.FC = () => {
       isListeningRef.current = false;
       setIsListening(false);
       try { recognitionRef.current?.abort(); } catch {}
+      
+      window.speechSynthesis.cancel(); 
+      
       setStatusText("SYSTEM ONLINE");
+      setShowResponseModal(false);
+      if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+
       return;
     }
 
     setStatusText("INITIALIZING...");
-    
     window.speechSynthesis.cancel();
     lastCommandTextRef.current = ""; 
     
@@ -722,6 +780,7 @@ const AuraAssistant: React.FC = () => {
       type: "text",
       data: item.command,
     });
+    if (!isMobile) setShowResponseModal(true);
   };
 
   const clearHistory = () => {
@@ -756,15 +815,18 @@ const AuraAssistant: React.FC = () => {
     const resultText = typeof commandDetails.data === "string" ? commandDetails.data : JSON.stringify(commandDetails.data, null, 2);
 
     return (
-      <div className="aura-response">
+      <div 
+        className="aura-response" 
+        onClick={() => {
+          if (!isMobile) setShowResponseModal(true);
+        }}
+        style={{ cursor: isMobile ? "default" : "pointer" }}
+      >
         <div className="aura-response-label">
           <span className="aura-live-dot" />
-          RESPONSE DATA
+          RESPONSE DATA {!isMobile && "(CLICK TO EXPAND)"}
         </div>
-        {/* 👇 TYPEWRITER COMPONENT IN USE HERE 👇 */}
-        <p>
-          <Typewriter text={resultText || "No response data returned."} speed={10} />
-        </p>
+        <Typewriter text={resultText || "No response data returned."} speed={10} />
       </div>
     );
   };
@@ -777,6 +839,131 @@ const AuraAssistant: React.FC = () => {
       <div className="aura-scanlines" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-one" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-two" aria-hidden="true" />
+
+      {showResponseModal && !isMobile && (
+        <div 
+          style={{
+            position: "fixed",
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: "rgba(5, 3, 15, 0.7)",
+            backdropFilter: "blur(12px)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            animation: "auraEmbedIn 200ms ease"
+          }}
+        >
+          <div 
+            style={{
+              background: lightMode ? "rgba(255, 255, 255, 0.95)" : "rgba(15, 12, 32, 0.95)",
+              border: "1px solid rgba(139, 92, 246, 0.4)",
+              borderRadius: "24px",
+              width: "100%",
+              maxWidth: "900px",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "row",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px rgba(139, 92, 246, 0.15)",
+              overflow: "hidden"
+            }}
+          >
+            <div style={{ 
+              width: "350px", 
+              flexShrink: 0,
+              display: "flex", 
+              flexDirection: "column", 
+              alignItems: "center", 
+              justifyContent: "center",
+              background: "linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(0,0,0,0) 100%)",
+              borderRight: "1px solid rgba(139, 92, 246, 0.2)",
+              padding: "40px",
+              position: "relative"
+            }}>
+              <div 
+                className={`aura-orb ${statusText === "SPEAKING" || isListening ? "listening-active" : "orb-glow"}`} 
+                style={{ width: "100%", marginBottom: "20px" }}
+              >
+                <div className="aura-orb-grid" aria-hidden="true" />
+                <div className="aura-orb-ring aura-orb-ring-one" />
+                <div className="aura-orb-ring aura-orb-ring-two" />
+                <img src={auraLogo} alt="Aura AI" className="aura-core-logo" style={{ width: "40%" }} />
+                <canvas ref={modalCanvasRef} aria-hidden="true" />
+              </div>
+              <h3 style={{ 
+                margin: 0, 
+                fontFamily: "var(--aura-display)", 
+                color: lightMode ? "#21183c" : "#fff",
+                letterSpacing: "0.1em",
+                textAlign: "center"
+              }}>
+                AURA AI
+              </h3>
+              <span style={{ 
+                marginTop: "8px", 
+                fontSize: "10px", 
+                color: "#a78bfa",
+                letterSpacing: "0.2em",
+                fontFamily: "var(--aura-display)"
+              }}>
+                {commandDetails.category}
+              </span>
+            </div>
+
+            <div style={{ 
+              flex: 1, 
+              display: "flex", 
+              flexDirection: "column",
+              position: "relative"
+            }}>
+              <div style={{ 
+                display: "flex", justifyContent: "space-between", alignItems: "flex-start", 
+                padding: "24px 30px", 
+                borderBottom: "1px solid rgba(139, 92, 246, 0.15)",
+              }}>
+                <div>
+                  <span className="aura-eyebrow" style={{ color: "#a78bfa", letterSpacing: "0.15em" }}>IDENTIFIED SUBJECT</span>
+                  <h3 style={{ margin: "5px 0 0", fontSize: "22px", color: lightMode ? "#21183c" : "#fff", lineHeight: 1.2 }}>
+                    {commandDetails.title}
+                  </h3>
+                </div>
+                <button 
+                  onClick={() => setShowResponseModal(false)}
+                  style={{
+                    background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.3)",
+                    color: "#a78bfa", width: "36px", height: "36px", borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", transition: "all 200ms", flexShrink: 0
+                  }}
+                >
+                  <FaXmark size={18} />
+                </button>
+              </div>
+
+              <div style={{ 
+                padding: "30px", overflowY: "auto", flex: 1, 
+                color: lightMode ? "#30274b" : "#d2cbe6",
+                fontSize: "16px", lineHeight: "1.8",
+                fontFamily: "var(--aura-font)"
+              }}>
+                {commandDetails.type === "video" && Array.isArray(commandDetails.data) ? (
+                  renderResult()
+                ) : (
+                  <Typewriter 
+                    text={
+                      (typeof commandDetails.data === "string" ? commandDetails.data : JSON.stringify(commandDetails.data, null, 2)) 
+                      || "No response data returned."
+                    } 
+                    speed={12} 
+                    onComplete={handleTypingComplete} 
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <header className="aura-header">
         <div className="aura-brand">
