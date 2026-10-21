@@ -18,7 +18,7 @@ export interface UserProfile {
 }
 
 const defaultProfile: UserProfile = {
-  name: "Operator",
+  name: "Sir",
   facts: []
 };
 
@@ -36,7 +36,10 @@ const loadProfile = (): UserProfile => {
       const badWords = ["save it", "check the database", "check", "database", "please", "thanks", "this"];
       if (badWords.some(word => lowerName.includes(word))) {
         console.warn("[Aura Memory] Detected corrupted name. Resetting...");
-        parsed.name = "Operator";
+        
+        // FIXED: Changed from "Operator" to "Sir"
+        parsed.name = "Sir"; 
+        
         needsSaving = true;
       }
     }
@@ -79,7 +82,8 @@ export const saveUserProfile = (profile: Partial<UserProfile>) => {
 
 // Function to clear all user memory manually via command
 export const clearUserMemory = () => {
-  userProfile = { name: "Operator", facts: [] };
+  // FIXED: Changed from "Operator" to "Sir"
+  userProfile = { name: "Sir", facts: [] }; 
   localStorage.removeItem("aura_user_profile");
 };
 // ---------------------------

@@ -12,7 +12,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
 
   const hasPlayedRef = useRef(false);
 
-  // --- SPEAK "WELCOME BACK, MASTER" ---
+  // --- SPEAK "WELCOME BACK, SIR" ---
   const playWelcomeVoice = () => {
     if (hasPlayedRef.current) return;
     if (!("speechSynthesis" in window)) return;
@@ -22,7 +22,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     // Clear any leftover audio from the Splash screen
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance("Welcome back, Master.");
+    // FIXED: Changed from "Master" to "Sir"
+    const utterance = new SpeechSynthesisUtterance("Welcome back, Sir.");
     
     // Monster voice — same settings as Aura core
     utterance.pitch = 0.6;
@@ -66,8 +67,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     window.addEventListener("keydown", handleInteraction);
     window.addEventListener("touchstart", handleInteraction, { passive: true });
 
-    // 3. Typing Animation
-    const fullText = "WELCOME BACK, MASTER";
+    // 3. Typing Animation (Already says SIR, keeping it here for reference)
+    const fullText = "WELCOME BACK, SIR";
     let i = 0;
     
     // Clear the greeting on mount to prevent StrictMode duplication issues
