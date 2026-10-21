@@ -7,9 +7,6 @@
   color-scheme: dark;
 
   --aura-bg: #080714;
-  --aura-bg-soft: #0c0a1d;
-  --aura-panel: rgba(17, 15, 39, 0.88);
-  --aura-panel-solid: #100e24;
 
   --aura-purple: #8b5cf6;
   --aura-violet: #a78bfa;
@@ -357,8 +354,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   align-items: center;
   justify-content: center;
   min-height: 0;
-  /* Removed the extra 90px left padding, now perfectly centered */
-  padding: 20px; 
+  padding: 20px;
 }
 
 .aura-core-content { display: flex; flex-direction: column; align-items: center; width: 100%; min-width: 0; }
@@ -423,22 +419,21 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-greeting h2 { margin: 8px 0 10px; font-size: clamp(25px, 2.4vw, 35px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; }
 .aura-greeting h2 span { color: var(--aura-violet); text-shadow: 0 0 24px rgba(139, 92, 246, 0.2); }
 
-/* FIXED: Added standard line-clamp for editor compatibility */
-.aura-greeting p { 
-  max-width: 420px; 
-  margin: 0 auto; 
-  overflow-wrap: anywhere; 
-  color: #a39bbd; 
-  font-size: 15px; 
-  line-height: 1.6; 
-  white-space: normal; 
-  word-break: break-word; 
-  min-height: 48px; 
+.aura-greeting p {
+  max-width: 420px;
+  margin: 0 auto;
+  overflow-wrap: anywhere;
+  color: #a39bbd;
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: normal;
+  word-break: break-word;
+  min-height: 48px;
   display: -webkit-box;
-  -webkit-line-clamp: 4; 
+  -webkit-line-clamp: 4;
   line-clamp: 4;
   -webkit-box-orient: vertical;
-  overflow-y: auto; 
+  overflow-y: auto;
 }
 
 .aura-status-line { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 17px; color: var(--aura-violet); font-family: var(--aura-display); font-size: 9px; letter-spacing: 0.13em; }
@@ -547,16 +542,14 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 
 .aura-light {
   color-scheme: light;
-  
-  /* Base Variables */
+
   --aura-text: #21183c;
   --aura-muted: #6b628a;
   --aura-subtle: #8a82a6;
-  --aura-panel: rgba(250, 248, 255, 0.85); /* Frosted light panel */
+  --aura-panel: rgba(250, 248, 255, 0.85);
   --aura-border: rgba(139, 92, 246, 0.15);
   --aura-border-bright: rgba(139, 92, 246, 0.3);
 
-  /* Main Background */
   background:
     radial-gradient(ellipse at 48% 42%, rgba(196, 181, 253, 0.3), transparent 40%),
     radial-gradient(ellipse at 90% 5%, rgba(147, 197, 253, 0.2), transparent 34%),
@@ -564,9 +557,8 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   color: #21183c;
 }
 
-/* Header */
-.aura-light .aura-header { 
-  background: rgba(255, 255, 255, 0.65); 
+.aura-light .aura-header {
+  background: rgba(255, 255, 255, 0.65);
   border-color: rgba(139, 92, 246, 0.2);
   box-shadow: 0 10px 30px rgba(139, 92, 246, 0.08), inset 0 1px rgba(255, 255, 255, 1);
 }
@@ -574,7 +566,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-brand h1 span { color: var(--aura-purple); }
 .aura-light .aura-brand p { color: #6b628a; }
 
-/* Panels */
 .aura-light .aura-panel {
   background: rgba(255, 255, 255, 0.65);
   border-color: rgba(139, 92, 246, 0.15);
@@ -583,19 +574,17 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-panel-heading h2 { color: #21183c; }
 .aura-light .aura-eyebrow { color: #8a82a6; }
 
-/* Center Stage (Orb Area) */
 .aura-light .aura-center {
   background: radial-gradient(ellipse at center, rgba(233, 228, 250, 0.6), transparent 60%), rgba(255, 255, 255, 0.4);
   border-color: rgba(139, 92, 246, 0.15);
 }
-.aura-light .aura-center::before { opacity: 0.4; } /* Tone down grid */
+.aura-light .aura-center::before { opacity: 0.4; }
 .aura-light .aura-center-topline { color: #8a82a6; }
 .aura-light .aura-center-coordinates { color: #a59bc2; }
 .aura-light .aura-greeting h2 { color: #21183c; }
 .aura-light .aura-greeting h2 span { color: var(--aura-purple); text-shadow: none; }
 .aura-light .aura-greeting p { color: #6b628a; }
 
-/* Orb Specific Adjustments for Light Mode */
 .aura-light .aura-orb {
   border-color: rgba(139, 92, 246, 0.3);
   background: radial-gradient(circle at 50% 45%, #e9e4fa, #f6f3ff 60%, #ffffff 85%);
@@ -606,14 +595,12 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-orb-ring-two { border-top-color: var(--aura-blue); border-bottom-color: var(--aura-pink); }
 .aura-light .aura-orb-grid { background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, 0.1) 0deg 0.5deg, transparent 0.5deg 18deg); border-color: rgba(139, 92, 246, 0.15); }
 
-/* Sidebar */
 .aura-light .aura-search-box { background: rgba(255, 255, 255, 0.7); border-color: rgba(139, 92, 246, 0.2); color: #6b628a; }
 .aura-light .aura-search-input { background: #ffffff; border-color: rgba(139, 92, 246, 0.3); color: #21183c; }
 .aura-light .aura-history-copy strong { color: #30274b; }
 .aura-light .aura-history-item:hover { background: rgba(139, 92, 246, 0.06); border-color: rgba(139, 92, 246, 0.15); }
 .aura-light .aura-sidebar-footer { border-color: rgba(139, 92, 246, 0.15); }
 
-/* Command Output Panel */
 .aura-light .aura-result-title { background: rgba(255, 255, 255, 0.6); border-color: rgba(139, 92, 246, 0.2); }
 .aura-light .aura-result-title h3 { color: #21183c; }
 .aura-light .aura-category-tag { background: rgba(139, 92, 246, 0.08); color: var(--aura-purple); border-color: rgba(139, 92, 246, 0.2); }
@@ -624,11 +611,9 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-command-tip { background: rgba(139, 92, 246, 0.04); border-color: rgba(139, 92, 246, 0.15); }
 .aura-light .aura-command-tip p { color: #6b628a; }
 
-/* Light Mode Notification */
 .aura-light .aura-notification { background: #ffffff; color: #21183c; box-shadow: 0 20px 60px rgba(139, 92, 246, 0.15); }
 .aura-light .aura-notification p { color: #6b628a; }
 
-/* Light Mode Footer */
 .aura-light .aura-footer { color: #a59bc2; }
 .aura-light .aura-footer-online { color: var(--aura-purple); }
 
@@ -715,22 +700,21 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 2px; }
   .aura-header-actions .aura-icon-button { width: 32px; height: 32px; }
   .aura-dashboard { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
-  
-  /* FIXED: Removes the giant empty space, fills the screen, but grows if text gets long */
-  .aura-center { 
-    order: 1; 
-    min-height: calc(100dvh - 100px); 
-    height: auto; 
-    overflow: hidden; 
+
+  .aura-center {
+    order: 1;
+    min-height: calc(100dvh - 100px);
+    height: auto;
+    overflow: hidden;
   }
-  
+
   .aura-sidebar { order: 2; min-height: 280px; max-height: 440px; }
   .aura-results { order: 3; min-height: 390px; max-height: none; }
-  
+
   .aura-core-stage { padding: 20px 10px; }
   .aura-orb { width: min(275px, 72vw); }
   .aura-greeting h2 { font-size: 27px; }
-  
+
   .aura-footer { flex-wrap: wrap; justify-content: center; padding: 12px 0; text-align: center; }
   .aura-notification { position: fixed; top: 80px; right: 12px; }
 }
@@ -739,17 +723,16 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 0; }
   .aura-header-actions .aura-icon-button { width: 29px; height: 32px; }
   .aura-brand h1 { font-size: 12px; }
-  
-  /* FIXED: Apply the same natural growing height for very small screens */
-  .aura-center { 
-    min-height: calc(100dvh - 100px); 
-    height: auto; 
+
+  .aura-center {
+    min-height: calc(100dvh - 100px);
+    height: auto;
   }
-  
+
   .aura-orb { width: min(230px, 68vw); }
   .aura-greeting h2 { font-size: 24px; }
   .aura-mic-button { min-width: 190px; }
-  
+
   .aura-core-stage { padding: 20px 10px; }
 }
 

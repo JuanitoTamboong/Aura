@@ -49,16 +49,14 @@ export const processCommand = async ({
 
   const lowerCmd = originalCommand.toLowerCase().trim();
 
-  // 0. INSTANT ABSOLUTE STOP
+  // 0. INSTANT ABSOLUTE STOP — ends session, mic OFF
   if (/\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/.test(lowerCmd)) {
-    stopMic(); // Turns off the listening state
-    clearConversation();
-    
-    // Force stop all speech synthesis immediately
+    // Cancel speech FIRST so no further utterance sneaks in
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    
+    stopMic(); // Turns off the listening state
+    clearConversation();
     setEmbeddedVideo?.(null);
 
     const stopMsg = "Stopped.";
@@ -66,8 +64,29 @@ export const processCommand = async ({
     setTranscriptText(`"Stopped."`);
     setStatusText("SYSTEM ONLINE");
     
-    // We do NOT call auraSpeak here, so it stays completely silent when you tell it to stop.
+    // Stay silent — do NOT call auraSpeak
     return stopMsg;
+  }
+
+  // 0.25 WAIT / HOLD ON — silence but KEEP LISTENING
+  if (/\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/.test(lowerCmd)) {
+    // Cut current speech only
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    // Do NOT call stopMic() — mic stays alive
+    setCommandDetails({
+      title: "Waiting",
+      category: "Standing By",
+      match: "100%",
+      type: "text",
+      data: "I'm listening. Take your time — say your command when ready.",
+    });
+    setTranscriptText(`"Waiting..."`);
+    setStatusText("LISTENING");
+    
+    // Stay silent — do NOT call auraSpeak
+    return "";
   }
 
   // 0.5 CONTINUE SPEAKING
