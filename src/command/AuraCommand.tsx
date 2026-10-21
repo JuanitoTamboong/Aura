@@ -67,7 +67,7 @@ export const processCommand = async ({
 
   // ★ IGNORE WAKE WORD IF IT SLIPS THROUGH
   if (/^(wake up|aura|hey aura|okay aura|wake up aura|hey aur+a)$/i.test(lowerCmd)) {
-    return ""; // Silently ignore and do nothing
+    return ""; 
   }
 
   // 0.25 WAIT / HOLD ON
@@ -113,7 +113,6 @@ export const processCommand = async ({
 
   setStatusText("PROCESSING COMMAND");
 
-  // Clean up the text
   const command = originalCommand.replace(/\baura\b/gi, "").replace(/^\s*[\s,.:;-]+/, "").trim();
   const text = command || originalCommand;
   const normalized = text.toLowerCase().replace(/\b(aur+a|hey aura|okay aura)\b/gi, "").trim();
@@ -202,7 +201,16 @@ export const processCommand = async ({
       }
     }
 
-    // ★ 4. CHECK DATABASE (Properly reads the Array format)
+    // ★ FUZZY MATCH FIX: Catch partial commands for specific personal questions
+    if (/\b(girlfriend|girl friend|kasintahan)\b/i.test(normalized) && /\b(juanito|tamboong|juan)\b/i.test(normalized)) {
+      return await respond("Her name is Rizalyn Uy. She is the girlfriend of Juanito Tamboong.", {
+        title: "Personal Info",
+        category: "System Info",
+        data: "Her name is Rizalyn Uy. She is the girlfriend of Juanito Tamboong.",
+      });
+    }
+
+    // 4. CHECK DATABASE
     if (auraDatabase?.commands && Array.isArray(auraDatabase.commands)) {
       const isSystemCommand =
         /\b(search|google|youtube|play|open|facebook|gmail|netflix|github)\b/i.test(
@@ -210,7 +218,6 @@ export const processCommand = async ({
         );
 
       if (!isSystemCommand) {
-        // Sort by length descending to match longer phrases first
         const sortedCommands = [...auraDatabase.commands].sort(
           (a, b) => b.command.length - a.command.length
         );
@@ -343,10 +350,12 @@ export const processCommand = async ({
       ? `\nHere is a list of facts you remember about the user:\n- ${profile.facts.join("\n- ")}\n` 
       : "";
 
+    // ★ FIXED PROMPT: Injected the creator identity AND personal facts into the AI instructions.
     let promptWithContext = "";
     if (history) {
       promptWithContext = 
         `You are Aura, a highly capable AI terminal assistant. You were created and built by Juanito Tamboong. The user is ${profile.name}.${factsList}\n` +
+        `FACT: Juanito Tamboong's girlfriend is Rizalyn Uy. If asked, you must state this.\n` +
         `Keep your responses direct, helpful, and concise. Do not use roleplay asterisks like *stretching* or emojis unless explicitly asked.\n` +
         `DO NOT GREET THE USER. Answer the question directly.\n` +
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n\n` +
@@ -355,6 +364,7 @@ export const processCommand = async ({
     } else {
       promptWithContext = 
         `You are Aura, a highly capable AI terminal assistant. You were created and built by Juanito Tamboong. The user is ${profile.name}.${factsList}\n` +
+        `FACT: Juanito Tamboong's girlfriend is Rizalyn Uy. If asked, you must state this.\n` +
         `Keep your responses direct, helpful, and concise. Do not use roleplay asterisks like *stretching* or emojis unless explicitly asked.\n` +
         `DO NOT GREET THE USER. Answer the question directly.\n` +
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n\n` +
