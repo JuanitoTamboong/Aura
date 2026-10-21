@@ -1,75 +1,38 @@
-# React + TypeScript + Vite
+# 🌌 AURA / AI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **NEURAL COMMAND INTERFACE // SYS.V 2.0**
 
-Currently, two official plugins are available:
+Aura is a voice-first, cyberpunk-styled AI desktop assistant built with React, TypeScript, and Vite. It features a dynamic particle orb, persistent local memory, a full voice command processor, and hands-free wake-word activation.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+![Aura UI Preview](https://via.placeholder.com/1200x600/080714/8b5cf6?text=AURA+AI+COMMAND+CENTER) 
+<!-- Replace the link above with an actual screenshot of your UI once uploaded to GitHub -->
 
-## React Compiler
+## 🚀 Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Hands-Free Wake Word:** Turn on the power button (⏻) and leave it on. Aura stays in standby, listening for *"Aura, wake up"* or *"Hey Aura"*. It persists across page refreshes using `localStorage`.
+- **Voice & Memory:** Speak commands to open websites, search Google/YouTube, get the time, or ask complex questions. Aura remembers your name and personal facts across sessions.
+- **Embedded Media:** Play YouTube videos directly inside the Aura interface.
+- **Dynamic UI:** A fully animated, responsive 3-column dashboard featuring a canvas-based particle orb that reacts to voice activity.
+- **Light/Dark Mode:** Toggle the cyberpunk deep-blue aesthetic to a bright, soft purple UI.
+- **Picture-in-Picture (PiP):** Pop Aura out into a floating window that syncs with your mic state.
+- **Session Logs & Archive:** Track your recent commands and view your saved AI memory profile in real-time.
 
-## Expanding the ESLint configuration
+## 🛠️ Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Framework:** React 18 + TypeScript
+- **Build Tool:** Vite
+- **Styling:** Vanilla CSS (Custom Cyberpunk Design System)
+- **Icons:** React Icons (FontAwesome 6)
+- **Speech:** Web Speech API (`SpeechRecognition` & `SpeechSynthesis`)
+- **AI Backend:** Connected via custom API endpoint (`aura-api`)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 📦 Getting Started
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### 1. Prerequisites
+Make sure you have [Node.js](https://nodejs.org/) installed on your machine.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 2. Installation
+Clone the repository and install the dependencies:
 
-```
-
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+```bash
+npm install
