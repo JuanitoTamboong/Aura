@@ -102,12 +102,15 @@ const AuraAssistant: React.FC = () => {
   const [handsFree, setHandsFree] = useState(false);
   const [micMode, setMicMode] = useState<MicMode>("off");
 
+  const [isOnline, setIsOnline] = useState<boolean>(() => {
+    return typeof navigator !== "undefined" ? navigator.onLine : true;
+  });
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const modalCanvasRef = useRef<HTMLCanvasElement | null>(null); 
   
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
-  // ★ MOVED UP: historyIdRef must be declared before `history` so we can seed it
   const historyIdRef = useRef(0);
   const centerContentRef = useRef<HTMLDivElement | null>(null);
   const centerPlaceholderRef = useRef<HTMLDivElement | null>(null);
@@ -126,7 +129,10 @@ const AuraAssistant: React.FC = () => {
   const handsFreeRef = useRef(false);
   const wakeCooldownRef = useRef(false);
 
-  // ★ NEW: persist history across refreshes
+  const wasOnlineRef = useRef<boolean>(
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
+
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
       const saved = localStorage.getItem(HISTORY_STORAGE_KEY);
@@ -134,7 +140,6 @@ const AuraAssistant: React.FC = () => {
       const parsed = JSON.parse(saved);
       if (!Array.isArray(parsed)) return [];
 
-      // Seed the ID counter so new entries never collide with restored ones
       const maxId = parsed.reduce(
         (max: number, item: HistoryItem) =>
           typeof item?.id === "number" && item.id > max ? item.id : max,
@@ -148,7 +153,6 @@ const AuraAssistant: React.FC = () => {
     }
   });
 
-  // ★ NEW: write history to localStorage whenever it changes
   useEffect(() => {
     try {
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
@@ -156,6 +160,43 @@ const AuraAssistant: React.FC = () => {
       console.warn("Failed to persist Aura history:", error);
     }
   }, [history]);
+
+  useEffect(() => {
+    let interval: any;
+
+    const checkConnection = async () => {
+      if (!navigator.onLine) {
+        setIsOnline(false);
+        return;
+      }
+      
+      try {
+        await fetch("https://www.google.com/favicon.ico", {
+          mode: "no-cors",
+          cache: "no-store",
+          method: "HEAD"
+        });
+        setIsOnline(true);
+      } catch {
+        setIsOnline(false);
+      }
+    };
+
+    checkConnection();
+    interval = setInterval(checkConnection, 10000);
+
+    const handleOnline = () => checkConnection();
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const profile = getUserProfile();
@@ -423,6 +464,22 @@ const AuraAssistant: React.FC = () => {
     prevVoiceRef.current = selectedVoiceName;
   }, [selectedVoiceName, auraSpeak]);
 
+  useEffect(() => {
+    const wasOnline = wasOnlineRef.current;
+    wasOnlineRef.current = isOnline;
+
+    if (!isOnline && wasOnline) {
+      setStatusText("OFFLINE");
+      setTranscriptText("No internet connection. Some features are unavailable.");
+      try { window.speechSynthesis.cancel(); } catch {}
+      auraSpeak("Warning. I have lost internet connection.");
+    } else if (isOnline && !wasOnline) {
+      setStatusText("SYSTEM ONLINE");
+      setTranscriptText("Connection restored. Aura is back online.");
+      auraSpeak("Connection restored.");
+    }
+  }, [isOnline, auraSpeak]);
+
   const addHistory = useCallback((command: string) => {
     const cleaned = command.trim();
     if (!cleaned) return;
@@ -497,6 +554,27 @@ const AuraAssistant: React.FC = () => {
       
       if (!cleaned || cleaned.length < 2) return;
 
+      if (!isOnline) {
+        console.warn("[Aura] Command blocked — offline:", cleaned);
+
+        setStatusText("OFFLINE");
+        setTranscriptText("No internet connection. Try again when you're back online.");
+        setCommandDetails({
+          title: "Offline",
+          category: "Network Error",
+          match: "0%",
+          type: "text",
+          data:
+            "**Aura is offline.**\n\n" +
+            "Your device has no internet connection. Commands that rely on the AI, " +
+            "YouTube search, or web search will not work right now.\n\n" +
+            "Local commands (time, date, saved memory, opening apps) may still work.",
+        });
+
+        auraSpeak("I can't process that right now. I don't have an internet connection.");
+        return;
+      }
+
       console.log("[Aura] Processing command:", cleaned);
 
       addHistory(cleaned);
@@ -533,7 +611,7 @@ const AuraAssistant: React.FC = () => {
         setTranscriptText("Unable to process this command. Please try again.");
       }
     },
-    [addHistory, auraSpeak, stopMic, isMobile]
+    [addHistory, auraSpeak, stopMic, isMobile, isOnline]
   );
 
   const setupSpeechRecognition = useCallback(
@@ -653,13 +731,10 @@ const AuraAssistant: React.FC = () => {
           return; 
         }
 
-        // ★ FIX: Keep updating the UI with what it's currently hearing
         if (interim && mountedRef.current) {
           setTranscriptText(`"${interim}"`);
         }
 
-        // ★ FIX: Only process the final command if it's long enough, and add a small delay
-        // before clearing the lastCommandText to prevent mobile from cutting words.
         finalCommands.forEach((cmd) => {
           if (cmd !== lastCommandTextRef.current && cmd.length > 1) {
             lastCommandTextRef.current = cmd; 
@@ -670,7 +745,6 @@ const AuraAssistant: React.FC = () => {
 
             runCommand(cmd);       
             
-            // Wait 4 seconds before allowing the exact same command to be triggered again
             setTimeout(() => {
               if (lastCommandTextRef.current === cmd) lastCommandTextRef.current = "";
             }, 4000);
@@ -698,7 +772,6 @@ const AuraAssistant: React.FC = () => {
       recognition.onend = () => {
         const mode = micModeRef.current;
         
-        // ★ FIX: If the mobile browser forces the mic to stop while we are in active mode, restart it immediately
         if ((mode === "standby" || mode === "active") && !stopRequestedRef.current) {
           try {
             recognition.start();
@@ -988,14 +1061,12 @@ const AuraAssistant: React.FC = () => {
     setSearchQuery("");
     clearConversation();
 
-    // ★ NEW: wipe persisted history so it doesn't come back after refresh
     try {
       localStorage.removeItem(HISTORY_STORAGE_KEY);
     } catch (error) {
       console.warn("Failed to clear Aura history:", error);
     }
 
-    // Reset ID counter so numbering restarts cleanly
     historyIdRef.current = 0;
   };
 
@@ -1058,6 +1129,18 @@ const AuraAssistant: React.FC = () => {
       <div className="aura-scanlines" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-one" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-two" aria-hidden="true" />
+
+      {/* ★ UPDATED: Centered floating offline banner with Aura logo */}
+      {!isOnline && (
+        <div className="aura-offline-banner" role="alert" aria-live="assertive">
+          <img src={auraLogo} alt="Aura" className="aura-offline-logo" />
+          <span className="aura-offline-banner-text">
+            <strong>OFFLINE</strong>
+            <span>No internet connection. Cloud commands are disabled.</span>
+          </span>
+          <span className="aura-offline-banner-pulse">●</span>
+        </div>
+      )}
 
       {showResponseModal && !isMobile && (
         <div 
@@ -1196,8 +1279,8 @@ const AuraAssistant: React.FC = () => {
         </div>
 
         <div className="aura-header-status">
-          <span className="aura-live-dot" />
-          <span>CORE ONLINE</span>
+          <span className={`aura-live-dot ${!isOnline ? "offline" : ""}`} />
+          <span>{isOnline ? "CORE ONLINE" : "CORE OFFLINE"}</span>
           <span className="aura-header-divider" />
           <span className="aura-system-version">SYS.V 2.0</span>
         </div>
@@ -1278,6 +1361,7 @@ const AuraAssistant: React.FC = () => {
           <div style={{ fontSize: '11px', color: 'var(--aura-muted)', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', borderTop: '1px solid var(--aura-border)', paddingTop: '10px' }}>
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
+            {!isOnline && <p style={{ color: '#fca5a5' }}>• Network offline — cloud features disabled.</p>}
             {handsFree && <p style={{ color: 'var(--aura-violet)' }}>• Hands-free mode active ({micMode}).</p>}
             {history.length > 0 && <p style={{ color: 'var(--aura-violet)' }}>• Last command: "{history[0].command}"</p>}
             {embeddedVideo && <p style={{ color: 'var(--aura-cyan)' }}>• Embedded player active.</p>}
@@ -1411,7 +1495,6 @@ const AuraAssistant: React.FC = () => {
       <footer className="aura-footer">
         <span>AURA AI <span className="aura-footer-divider">/</span> COMMAND CENTER</span>
         <span>NEURAL LINK <span className="aura-footer-online">● ACTIVE</span></span>
-        {/* ★ UPDATED: history now persists in localStorage */}
         <span>COMMAND ARCHIVE PERSISTS LOCALLY</span>
       </footer>
     </div>

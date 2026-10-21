@@ -121,6 +121,89 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 
 /* =========================================================
+   OFFLINE BANNER (Floating Pill Design)
+   ========================================================= */
+
+.aura-offline-banner {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px 20px;
+  background: rgba(15, 12, 32, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 50px;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.5), 
+    0 0 20px rgba(239, 68, 68, 0.15),
+    inset 0 1px rgba(255, 255, 255, 0.05);
+  color: #fee2e2;
+  font-family: var(--aura-font);
+  animation: auraOfflineSlideDown 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+}
+
+.aura-offline-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.6));
+}
+
+.aura-offline-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.aura-offline-banner-text strong {
+  font-family: var(--aura-display);
+  letter-spacing: 0.16em;
+  color: #fca5a5;
+  font-size: 11px;
+}
+
+.aura-offline-banner-pulse {
+  font-size: 10px;
+  color: #ef4444;
+  animation: auraOfflineBlink 1.4s ease-in-out infinite;
+  margin-left: 4px;
+}
+
+/* Red dot override for offline header status */
+.aura-live-dot.offline {
+  background: #ef4444 !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.85) !important;
+}
+
+/* No longer need to push the header down since it floats */
+.aura-app:has(.aura-offline-banner) .aura-header {
+  margin-top: 0; 
+}
+
+@keyframes auraOfflineSlideDown {
+  from { transform: translate(-50%, -100%); opacity: 0; }
+  to   { transform: translate(-50%, 0);     opacity: 1; }
+}
+
+@keyframes auraOfflineBlink {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+/* =========================================================
    HEADER
    ========================================================= */
 
@@ -268,7 +351,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 
 .aura-sidebar, .aura-results { 
   padding: 20px; 
-  /* ★ FIX: Ensure these panels act as flex containers to contain the scrolling list */
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -328,7 +410,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-archive-heading { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 12px; color: var(--aura-muted); font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.12em; }
 .aura-archive-heading span:last-child { color: var(--aura-violet); }
 
-/* ★ FIX: Ensure the list takes up remaining space and scrolls internally */
 .aura-history-list { 
   display: flex; 
   flex: 1; 
@@ -690,6 +771,24 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   scrollbar-color: #cbd5e1 transparent;
 }
 
+/* ★ NEW — light mode offline banner */
+.aura-light .aura-offline-banner {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 
+    0 10px 30px rgba(139, 92, 246, 0.15), 
+    0 0 20px rgba(239, 68, 68, 0.1);
+  color: #7f1d1d;
+}
+
+.aura-light .aura-offline-banner-text strong {
+  color: #b91c1c;
+}
+
+.aura-light .aura-offline-banner-pulse {
+  color: #b91c1c;
+}
+
 .aura-light .aura-header {
   background: rgba(255, 255, 255, 0.65);
   border-color: rgba(139, 92, 246, 0.2);
@@ -871,6 +970,17 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 2px; }
   .aura-header-actions .aura-icon-button { width: 32px; height: 32px; }
 
+  /* ★ NEW — mobile offline banner tweaks (floating pill adjustment) */
+  .aura-offline-banner {
+    padding: 8px 16px;
+    gap: 10px;
+  }
+  .aura-offline-banner-text {
+    white-space: normal;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
   .aura-dashboard { 
     display: flex; 
     flex-direction: column; 
@@ -878,7 +988,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     margin-top: 12px; 
     flex: 1; 
     min-height: 0;
-    overflow-y: auto; /* Allows mobile to scroll down and see output */
+    overflow-y: auto;
     padding-bottom: 20px;
   }
 
