@@ -55,7 +55,7 @@ const INITIAL_DETAILS: CommandDetails = {
 // 2. BOOT STAGES: splash → welcome → ready
 type BootStage = "splash" | "welcome" | "ready";
 
-// Interrupt words — checked FIRST, even while Aura is speaking
+// Interrupt words
 const STOP_WORDS = /\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/i;
 const WAIT_WORDS = /\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/i;
 
@@ -93,12 +93,12 @@ const AuraAssistant: React.FC = () => {
   const pipAnimationRef = useRef<number>(0);
   const pipWindowRef = useRef<Window | null>(null);
   const mountedRef = useRef(true);
+  const lastCommandTextRef = useRef("");
 
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
 
-  // Force the browser to load the voices immediately and populate the menu
   useEffect(() => {
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices();
@@ -126,9 +126,7 @@ const AuraAssistant: React.FC = () => {
 
       try {
         recognitionRef.current?.abort();
-      } catch {
-        // Recognition may already be stopped.
-      }
+      } catch {}
 
       window.speechSynthesis?.cancel();
       cancelAnimationFrame(mainAnimationRef.current);
@@ -274,15 +272,13 @@ const AuraAssistant: React.FC = () => {
   }, [startAnimation, bootStage]);
 
   // ---------------------------------------------------------
-  // SPEECH OUTPUT — mic stays ALIVE so we can hear "stop"/"wait"
+  // SPEECH OUTPUT
   // ---------------------------------------------------------
   const auraSpeak = useCallback((text: string) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
-    // Cancel any previous utterance
     window.speechSynthesis.cancel();
 
-    // Small warm-up tick helps some browsers flush the queue
     const warmUp = new SpeechSynthesisUtterance(" ");
     warmUp.volume = 0;
     window.speechSynthesis.speak(warmUp);
@@ -296,13 +292,7 @@ const AuraAssistant: React.FC = () => {
       const chosenVoice = voices.find(v => v.name === selectedVoiceName);
       if (chosenVoice) utterance.voice = chosenVoice;
 
-      // NOTE: We do NOT stop the mic here anymore, and we do NOT
-      // restart it on end. The recognition engine runs continuously
-      // while the session is live — interrupt words are caught in
-      // recognition.onresult via the speechSynthesis.speaking guard.
-
       utterance.onend = () => {
-        // If session is still live, make sure status reflects readiness
         if (isListeningRef.current) {
           setStatusText((prev) => (prev === "SPEAKING" ? "LISTENING" : prev));
         }
@@ -344,8 +334,6 @@ const AuraAssistant: React.FC = () => {
   const runCommand = useCallback(
     (command: string) => {
       const cleaned = command.trim();
-      
-      // 3. Prevent tiny background noises from triggering commands
       if (!cleaned || cleaned.length < 2) return;
 
       addHistory(cleaned);
@@ -373,7 +361,7 @@ const AuraAssistant: React.FC = () => {
   );
 
   // ---------------------------------------------------------
-  // SPEECH RECOGNITION — WITH VOICE INTERRUPTS
+  // SPEECH RECOGNITION
   // ---------------------------------------------------------
   const setupSpeechRecognition = useCallback(
     (targetWindow: Window = window) => {
@@ -396,8 +384,6 @@ const AuraAssistant: React.FC = () => {
       recognition.interimResults = true;
       recognition.lang = "en-US";
 
-      let lastCommandText = ""; 
-
       recognition.onresult = (event: any) => {
         let interim = "";
         const finalCommands: string[] = [];
@@ -415,64 +401,64 @@ const AuraAssistant: React.FC = () => {
           }
         }
 
+        const heardText = `${interim} ${finalCommands.join(" ")}`.toLowerCase();
+
         // ============================================================
-        // INTERRUPT HANDLING — fires even while Aura is speaking
+        // INTERRUPT HANDLING
         // ============================================================
-        if (window.speechSynthesis.speaking) {
-          const heard = `${interim} ${finalCommands.join(" ")}`.toLowerCase();
+        
+        // "stop" → full halt, CLOSE MIC
+        if (STOP_WORDS.test(heardText)) {
+          try { window.speechSynthesis.cancel(); } catch {}
+          
+          stopMic(); // <--- Closes the mic!
+          
+          clearConversation();
+          setEmbeddedVideo(null);
+          setTranscriptText(`Stopped.`); 
+          setCommandDetails({
+            title: "Standing By",
+            category: "Awaiting Command",
+            match: "100%",
+            type: "text",
+            data: "System paused. Click INITIATE VOICE to start a new session.",
+          });
+          lastCommandTextRef.current = ""; 
+          return;
+        }
 
-          // "stop" → full halt: kill speech + end session (mic OFF)
-          if (STOP_WORDS.test(heard)) {
-            try { window.speechSynthesis.cancel(); } catch {}
-            try { recognition.stop(); } catch {}
-            isListeningRef.current = false;
-            setIsListening(false);
-            clearConversation();
-            setEmbeddedVideo(null);
-            setStatusText("SYSTEM ONLINE");
-            setTranscriptText(`"Stopped."`);
-            setCommandDetails({
-              title: "Standing By",
-              category: "Awaiting Command",
-              match: "100%",
-              type: "text",
-              data: "System paused. Click INITIATE VOICE to start a new session.",
-            });
-            return;
-          }
-
-          // "wait" → pause speech but KEEP listening
-          if (WAIT_WORDS.test(heard)) {
-            try { window.speechSynthesis.cancel(); } catch {}
-            setStatusText("LISTENING");
-            setTranscriptText(`"Waiting..."`);
-            setCommandDetails({
-              title: "Waiting",
-              category: "Standing By",
-              match: "100%",
-              type: "text",
-              data: "I'm listening. Take your time — say your command when ready.",
-            });
-            return;
-          }
-
-          // Otherwise ignore (likely Aura's own echo)
+        // "wait" → pause speech, KEEP MIC ALIVE
+        if (WAIT_WORDS.test(heardText)) {
+          try { window.speechSynthesis.cancel(); } catch {}
+          
+          setStatusText("LISTENING");
+          setTranscriptText(`Waiting...`); 
+          setCommandDetails({
+            title: "Waiting",
+            category: "Standing By",
+            match: "100%",
+            type: "text",
+            data: "I'm listening. Take your time — say your command when ready.",
+          });
+          lastCommandTextRef.current = ""; 
           return;
         }
 
         // ============================================================
-        // NORMAL COMMAND FLOW — Aura is silent
+        // NORMAL COMMAND FLOW
         // ============================================================
 
-        // 1. Show the live text as you speak
+        if (window.speechSynthesis.speaking) {
+          return; 
+        }
+
         if (interim && mountedRef.current) {
           setTranscriptText(`"${interim}"`);
         }
 
-        // 2. Show the final text so it doesn't disappear or cut off
         finalCommands.forEach((cmd) => {
-          if (cmd !== lastCommandText && cmd.length > 1) {
-            lastCommandText = cmd; 
+          if (cmd !== lastCommandTextRef.current && cmd.length > 1) {
+            lastCommandTextRef.current = cmd; 
             
             if (mountedRef.current) {
               setTranscriptText(`"${cmd}"`); 
@@ -481,7 +467,7 @@ const AuraAssistant: React.FC = () => {
             runCommand(cmd);       
             
             setTimeout(() => {
-              if (lastCommandText === cmd) lastCommandText = "";
+              if (lastCommandTextRef.current === cmd) lastCommandTextRef.current = "";
             }, 3000);
           }
         });
@@ -513,7 +499,6 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
-        // Keep mic alive even while Aura speaks so we can hear "stop"/"wait"
         try {
           recognition.start();
         } catch {}
@@ -534,29 +519,27 @@ const AuraAssistant: React.FC = () => {
     };
   }, [setupSpeechRecognition]);
 
+  // ---------------------------------------------------------
+  // MIC TOGGLE
+  // ---------------------------------------------------------
   const toggleMic = useCallback(() => {
-    const recognition = recognitionRef.current;
-
-    if (!recognition) {
-      setStatusText("VOICE NOT SUPPORTED");
-      setTranscriptText("Use a supported browser with microphone access, such as desktop Chrome.");
-      return;
-    }
-
     if (isListeningRef.current) {
       isListeningRef.current = false;
       setIsListening(false);
-
-      try {
-        recognition.stop();
-      } catch {}
-
+      try { recognitionRef.current?.abort(); } catch {}
       setStatusText("SYSTEM ONLINE");
       return;
     }
 
+    setStatusText("INITIALIZING...");
+    
+    window.speechSynthesis.cancel();
+    lastCommandTextRef.current = ""; 
+    
+    setupSpeechRecognition(window);
+    
     try {
-      recognition.start();
+      recognitionRef.current.start();
       isListeningRef.current = true;
       setIsListening(true);
       setStatusText("LISTENING");
@@ -565,7 +548,7 @@ const AuraAssistant: React.FC = () => {
       console.error("Could not start voice recognition:", error);
       setStatusText("MICROPHONE UNAVAILABLE");
     }
-  }, []);
+  }, [setupSpeechRecognition]);
 
   // ---------------------------------------------------------
   // PICTURE-IN-PICTURE

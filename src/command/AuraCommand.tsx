@@ -55,17 +55,23 @@ export const processCommand = async ({
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    stopMic(); // Turns off the listening state
+    
+    stopMic(); // Turns off the listening state and closes the session
+    
     clearConversation();
     setEmbeddedVideo?.(null);
-
-    const stopMsg = "Stopped.";
-    setCommandDetails({ title: "Standing By", category: "Awaiting Command", match: "100%", type: "text", data: "System paused. Say 'Continue' or ask a new question." });
-    setTranscriptText(`"Stopped."`);
+    setTranscriptText(`Stopped.`); 
     setStatusText("SYSTEM ONLINE");
+    setCommandDetails({ 
+      title: "Standing By", 
+      category: "Awaiting Command", 
+      match: "100%", 
+      type: "text", 
+      data: "System paused. Click INITIATE VOICE to start a new session." 
+    });
     
     // Stay silent — do NOT call auraSpeak
-    return stopMsg;
+    return "Stopped.";
   }
 
   // 0.25 WAIT / HOLD ON — silence but KEEP LISTENING
@@ -74,6 +80,7 @@ export const processCommand = async ({
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
+    
     // Do NOT call stopMic() — mic stays alive
     setCommandDetails({
       title: "Waiting",
@@ -82,7 +89,7 @@ export const processCommand = async ({
       type: "text",
       data: "I'm listening. Take your time — say your command when ready.",
     });
-    setTranscriptText(`"Waiting..."`);
+    setTranscriptText(`Waiting...`);
     setStatusText("LISTENING");
     
     // Stay silent — do NOT call auraSpeak
@@ -95,7 +102,7 @@ export const processCommand = async ({
     const lastAssistantTurn = [...history].reverse().find(t => t.role === "assistant");
     
     if (lastAssistantTurn) {
-      setTranscriptText(`"Continuing..."`);
+      setTranscriptText(`Continuing...`);
       setStatusText("SPEAKING");
       
       // Repeat the last thing Aura said
