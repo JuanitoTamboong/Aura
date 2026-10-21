@@ -413,17 +413,23 @@ const AuraAssistant: React.FC = () => {
           }
         }
 
+        // 1. Show the live text as you speak
         if (interim && mountedRef.current) {
           setTranscriptText(`"${interim}"`);
         }
 
-        // Only process if it's a new sentence, and ignore tiny noises
+        // 2. Show the final text so it doesn't disappear or cut off
         finalCommands.forEach((cmd) => {
           if (cmd !== lastCommandText && cmd.length > 1) {
-            lastCommandText = cmd; // Save it
-            runCommand(cmd);       // Run it
+            lastCommandText = cmd; 
             
-            // Clear memory after 3 seconds so you can say it again later
+            // Add this line to keep the full sentence on screen!
+            if (mountedRef.current) {
+              setTranscriptText(`"${cmd}"`); 
+            }
+
+            runCommand(cmd);       
+            
             setTimeout(() => {
               if (lastCommandText === cmd) lastCommandText = "";
             }, 3000);

@@ -422,7 +422,24 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-greeting .aura-eyebrow { color: #9d8dcf; font-size: 9px; letter-spacing: 0.18em; }
 .aura-greeting h2 { margin: 8px 0 10px; font-size: clamp(25px, 2.4vw, 35px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; }
 .aura-greeting h2 span { color: var(--aura-violet); text-shadow: 0 0 24px rgba(139, 92, 246, 0.2); }
-.aura-greeting p { max-width: 420px; margin: 0 auto; overflow-wrap: anywhere; color: #a39bbd; font-size: 15px; line-height: 1.6; }
+
+/* FIXED: Added wrapping and min-height so spoken commands don't cut off */
+.aura-greeting p { 
+  max-width: 420px; 
+  margin: 0 auto; 
+  overflow-wrap: anywhere; 
+  color: #a39bbd; 
+  font-size: 15px; 
+  line-height: 1.6; 
+  white-space: normal; 
+  word-break: break-word; 
+  min-height: 48px; 
+  display: -webkit-box;
+  -webkit-line-clamp: 4; 
+  -webkit-box-orient: vertical;
+  overflow-y: auto; 
+}
+
 .aura-status-line { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 17px; color: var(--aura-violet); font-family: var(--aura-display); font-size: 9px; letter-spacing: 0.13em; }
 .aura-status-indicator { width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; box-shadow: 0 0 10px rgba(139, 92, 246, 0.6); }
 .aura-status-indicator.active { background: var(--aura-cyan); box-shadow: 0 0 12px rgba(103, 232, 249, 0.8); }
@@ -501,7 +518,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  line-clamp: 2; /* FIXED: Added standard property to clear warning */
+  line-clamp: 2;
 }
 .aura-video-info span { color: var(--aura-subtle); font-family: var(--aura-display); font-size: 7px; letter-spacing: 0.1em; }
 .aura-video .aura-icon-button { width: 32px; height: 32px; border-color: var(--aura-border); background: rgba(139, 92, 246, 0.1); color: var(--aura-violet); }
@@ -697,7 +714,8 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 2px; }
   .aura-header-actions .aura-icon-button { width: 32px; height: 32px; }
   .aura-dashboard { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
-  .aura-center { order: 1; min-height: 650px; overflow: hidden; }
+  /* FIXED: Increased min-height to accommodate wrapped text */
+  .aura-center { order: 1; min-height: 720px; overflow: hidden; }
   .aura-sidebar { order: 2; min-height: 280px; max-height: 440px; }
   .aura-results { order: 3; min-height: 390px; max-height: none; }
   
@@ -713,7 +731,8 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 0; }
   .aura-header-actions .aura-icon-button { width: 29px; height: 32px; }
   .aura-brand h1 { font-size: 12px; }
-  .aura-center { min-height: 590px; }
+  /* FIXED: Increased min-height for very small screens */
+  .aura-center { min-height: 680px; }
   .aura-orb { width: min(230px, 68vw); }
   .aura-greeting h2 { font-size: 24px; }
   .aura-mic-button { min-width: 190px; }
