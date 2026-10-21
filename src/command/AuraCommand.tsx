@@ -9,6 +9,7 @@ import {
   hasRecentConversation,
   getUserProfile,
   saveUserProfile,
+  clearUserMemory,
 } from './AuraConversation';
 
 interface CommandDetails {
@@ -51,43 +52,28 @@ export const processCommand = async ({
 
   // 0. INSTANT ABSOLUTE STOP
   if (/\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/.test(lowerCmd)) {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     stopMic(); 
-    
     clearConversation();
     setEmbeddedVideo?.(null);
     setTranscriptText(`Stopped.`); 
     setStatusText("SYSTEM ONLINE");
     setCommandDetails({ 
-      title: "Standing By", 
-      category: "Awaiting Command", 
-      match: "100%", 
-      type: "text", 
+      title: "Standing By", category: "Awaiting Command", match: "100%", type: "text", 
       data: "System paused. Click INITIATE VOICE to start a new session." 
     });
-    
     return "Stopped.";
   }
 
   // 0.25 WAIT / HOLD ON
   if (/\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/.test(lowerCmd)) {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     setCommandDetails({
-      title: "Waiting",
-      category: "Standing By",
-      match: "100%",
-      type: "text",
+      title: "Waiting", category: "Standing By", match: "100%", type: "text",
       data: "I'm listening. Take your time — say your command when ready.",
     });
     setTranscriptText(`Waiting...`);
     setStatusText("LISTENING");
-    
     return "";
   }
 
@@ -95,7 +81,6 @@ export const processCommand = async ({
   if (/\b(continue|go on|keep going|resume|tuloy mo)\b/.test(lowerCmd)) {
     const history = getConversationTurns();
     const lastAssistantTurn = [...history].reverse().find(t => t.role === "assistant");
-    
     if (lastAssistantTurn) {
       setTranscriptText(`Continuing...`);
       setStatusText("SPEAKING");
@@ -110,21 +95,13 @@ export const processCommand = async ({
     }
   }
 
-  // 0.75 CLOSE MEDIA PLAYER (INSTANT)
+  // 0.75 CLOSE MEDIA PLAYER
   if (/\b(close|hide|exit|dismiss)\b/.test(lowerCmd) && /\b(video|player|it|youtube|that)\b/.test(lowerCmd)) {
     setEmbeddedVideo?.(null);
     const msg = "Closing the video player.";
-    
     setTranscriptText(`"${originalCommand}"`);
     setStatusText("SYSTEM ONLINE");
-    setCommandDetails({
-      title: "Player Closed", 
-      category: "System Control", 
-      match: "100%", 
-      type: "text", 
-      data: "Embedded player hidden.",
-    });
-
+    setCommandDetails({ title: "Player Closed", category: "System Control", match: "100%", type: "text", data: "Embedded player hidden." });
     await Promise.resolve(auraSpeak(msg));
     return msg;
   }
@@ -141,15 +118,10 @@ export const processCommand = async ({
   ): Promise<string> => {
     addUserTurn(originalCommand);
     addAssistantTurn(spoken);
-    
     setCommandDetails({
-      title: details.title,
-      category: details.category,
-      match: details.match ?? "100%",
-      type: details.type ?? "text",
-      data: details.data,
+      title: details.title, category: details.category, match: details.match ?? "100%",
+      type: details.type ?? "text", data: details.data,
     });
-    
     setStatusText("SYSTEM ONLINE");
     await Promise.resolve(auraSpeak(spoken));
     return spoken;
@@ -158,13 +130,11 @@ export const processCommand = async ({
   const searchYouTube = async (query: string) => {
     const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
     if (!apiKey) throw new Error("Missing YouTube API key");
-
     const res = await fetch(
       `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${apiKey}`
     );
     if (!res.ok) throw new Error("Search failed");
     const data = await res.json();
-    
     if (data.items && data.items.length > 0) {
       return { id: data.items[0].id.videoId, title: data.items[0].snippet.title };
     }
@@ -173,15 +143,54 @@ export const processCommand = async ({
 
   try {
     // --- USER MEMORY SAVING ---
-    const nameMatch = normalized.match(/(?:my name is|i am|ako si|pangalan ko ay)\s+([a-z\s]+)/i);
-    if (nameMatch && nameMatch[1]) {
-      const newName = nameMatch[1].trim().replace(/[.,!?]/g, ''); 
-      saveUserProfile({ name: newName });
-      return await respond(`Nice to meet you, ${newName}. I have saved your name to my memory.`, {
-        title: "Memory Updated",
-        category: "System",
-        data: `I will remember that your name is ${newName}.`,
+    
+    // 1. CLEAR MEMORY COMMAND
+    if (/\b(clear memory|clear my memory|forget everything|forget me|wipe memory|delete memory)\b/i.test(normalized)) {
+      clearUserMemory();
+      return await respond("I have completely wiped my memory bank. We are starting fresh.", {
+        title: "Memory Cleared", category: "System",
+        data: "All saved names and facts have been deleted.",
       });
+    }
+
+    // 2. SAVE NAME
+    if (/\b(my name is|i am|ako si|pangalan ko ay)\b/i.test(normalized)) {
+      let rawName = originalCommand.replace(/.*\b(my name is|i am|ako si|pangalan ko ay)\b/gi, "").trim();
+      let newName = rawName.replace(/\b(save|it|check|the|database|and|please|thanks|thank|you|remember|this|search|open|play|aura)\b/gi, '').replace(/[.,!?]/g, '').replace(/\s+/g, ' ').trim();
+
+      if (newName) {
+        saveUserProfile({ name: newName });
+        return await respond(`Nice to meet you, ${newName}. I have saved your name to my memory.`, {
+          title: "Memory Updated", category: "System",
+          data: `I will remember that your name is ${newName}.`,
+        });
+      }
+    }
+
+    // 3. SAVE FACTS (UPDATED: Clean out pronouns and filler words)
+    if (/\b(remember|keep in mind|tandaan mo|remember that)\b/i.test(normalized)) {
+      let fact = originalCommand.replace(/\b(remember|that|keep in mind|tandaan mo)\b/gi, "").trim();
+      
+      // Strip out filler words like "this", "my", "the", "aura"
+      fact = fact
+        .replace(/\b(aura|this|my|the|a|an)\b/gi, "")
+        .replace(/\s+/g, ' ')
+        .trim();
+        
+      // Capitalize first letter for a clean look
+      fact = fact.charAt(0).toUpperCase() + fact.slice(1);
+
+      if (fact.length > 0) {
+        const profile = getUserProfile();
+        const currentFacts = profile.facts || [];
+        if (!currentFacts.includes(fact)) {
+          saveUserProfile({ facts: [...currentFacts, fact] });
+        }
+        return await respond(`Got it. I've added that to my memory.`, {
+          title: "Memory Updated", category: "System",
+          data: `Saved to memory: ${fact}`,
+        });
+      }
     }
 
     if (/\b(kilala mo ako|do you know me|who am i|sino ako)\b/i.test(normalized)) {
@@ -197,45 +206,34 @@ export const processCommand = async ({
       }
     }
 
-    // 1. CHECK DATABASE
+    // 4. CHECK DATABASE
     if (auraDatabase?.commands) {
       const isSystemCommand = /\b(search|google|youtube|play|open|facebook|gmail|netflix|github)\b/i.test(normalized);
-
       if (!isSystemCommand) {
         const sortedKeys = Object.keys(auraDatabase.commands).sort((a, b) => b.length - a.length);
-
         for (const key of sortedKeys) {
           const dbCommand = auraDatabase.commands[key];
           const keyLower = key.toLowerCase();
-          
           if (normalized.includes(keyLower)) {
-            return await respond(dbCommand.speak, {
-              title: dbCommand.title, category: dbCommand.category, data: dbCommand.speak,
-            });
+            return await respond(dbCommand.speak, { title: dbCommand.title, category: dbCommand.category, data: dbCommand.speak });
           }
-
           const keywords = keyLower.split(" ");
           const matchedAllKeywords = keywords.length > 1 && keywords.every((word: string) => normalized.includes(word));
-          
           if (matchedAllKeywords) {
-             return await respond(dbCommand.speak, {
-              title: dbCommand.title, category: dbCommand.category, data: dbCommand.speak,
-            });
+             return await respond(dbCommand.speak, { title: dbCommand.title, category: dbCommand.category, data: dbCommand.speak });
           }
         }
       }
     }
 
-    // 2. CLOSE WINDOW
+    // 5. CLOSE WINDOW
     if (/\b(close|quit|exit|shut)\b/.test(normalized) && /\b(window|tab|yourself|aura|app|dashboard)\b/.test(normalized)) {
-      const msg = await respond("Closing this window now.", {
-        title: "Close Window", category: "System Control", data: "Attempting to close this window.",
-      });
+      const msg = await respond("Closing this window now.", { title: "Close Window", category: "System Control", data: "Attempting to close this window." });
       setTimeout(() => { try { window.close(); } catch (e) {} }, 1200);
       return msg;
     }
 
-    // 3. TIME & DATE
+    // 6. TIME & DATE
     if (/\btime\b/.test(normalized) && !/\b(youtube|play|video|song|music)\b/.test(normalized)) {
       const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       return await respond(`It is currently ${timeString}.`, { title: "Current Time", category: "System Info", data: `It is currently ${timeString}.` });
@@ -246,13 +244,11 @@ export const processCommand = async ({
       return await respond(`Today is ${dateString}.`, { title: "Today's Date", category: "System Info", data: `Today is ${dateString}.` });
     }
 
-    // 4. YOUTUBE (UPDATED: Only trigger if they use action words)
+    // 7. YOUTUBE
     const isYouTubeCommand = /\b(play|open|launch|watch|search)\b/i.test(normalized);
-    
     if (isYouTubeCommand && /\b(youtube|music|song|video|it|that|this)\b/.test(normalized)) {
       const isJustOpenYouTube = /^(go\s*to\s+youtube|open\s+youtube|youtube|launch\s+youtube|show\s+(me\s+)?youtube)$/i.test(normalized);
       const isContextualFollowUp = /^(it|that|this|the\s+video|the\s+song|that\s+song|that\s+video|it\s+play\s+it|it\s+it|play\s+it\s+play\s+it|play\s+it\s+it|play\s+it)$/i.test(normalized.trim());
-
       let query = normalized
         .replace(/\b(can you|could you|would you|please|i want to|i wanna|let me)\b/g, '')
         .replace(/\b(go\s*to|goto|launch)\b/g, '')
@@ -286,7 +282,7 @@ export const processCommand = async ({
       }
     }
 
-    // 5. GOOGLE SEARCH
+    // 8. GOOGLE SEARCH
     if (/\b(search|google|look up|find|browse|surf)\b/.test(normalized)) {
       let query = normalized
         .replace(/\b(can you|please|could you|would you|i want to|let me)\b/g, '')
@@ -301,7 +297,7 @@ export const processCommand = async ({
       }
     }
 
-    // 6. QUICK OPEN SITES
+    // 9. QUICK OPEN SITES
     const siteMap: Record<string, string> = {
       'gmail': 'https://mail.google.com', 'google drive': 'https://drive.google.com', 'google maps': 'https://maps.google.com',
       'facebook': 'https://www.facebook.com', 'instagram': 'https://www.instagram.com', 'twitter': 'https://www.twitter.com',
@@ -317,7 +313,7 @@ export const processCommand = async ({
       }
     }
 
-    // 7. AI FALLBACK
+    // 10. AI FALLBACK (UPDATED TO INJECT FACTS)
     setCommandDetails({ title: text.toUpperCase(), category: "AI Knowledge", match: "...", type: "text", data: "Thinking..." });
 
     const history = getConversationForPrompt(); 
@@ -330,17 +326,22 @@ export const processCommand = async ({
 
     const profile = getUserProfile();
     
+    // Format the facts into a bulleted list
+    const factsList = profile.facts && profile.facts.length > 0 
+      ? `\nHere is a list of facts you remember about the user:\n- ${profile.facts.join("\n- ")}\n` 
+      : "";
+
     let promptWithContext = "";
     if (history) {
       promptWithContext = 
-        `You are Aura. The user is ${profile.name}. You are a highly capable AI.\n` +
+        `You are Aura. The user is ${profile.name}. You are a highly capable AI.${factsList}\n` +
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n` +
         `Answer the new user message directly. Be conversational and smart.\n\n` +
         `--- Recent conversation ---\n${history}\n--- End of conversation ---\n\n` +
         `User: ${enhancedPrompt}\nAura:`;
     } else {
       promptWithContext = 
-        `You are Aura. The user is ${profile.name}. You are a highly capable AI.\n` +
+        `You are Aura. The user is ${profile.name}. You are a highly capable AI.${factsList}\n` +
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n` +
         `User: ${enhancedPrompt}\nAura:`;
     }
@@ -376,9 +377,7 @@ export const processCommand = async ({
     setCommandDetails({ 
       title: text.toUpperCase(), 
       category: continuing ? "Conversation Follow-up" : "AI Knowledge", 
-      match: "100%", 
-      type: "text", 
-      data: safeReply 
+      match: "100%", type: "text", data: safeReply 
     });
     
     await Promise.resolve(auraSpeak(safeReply));

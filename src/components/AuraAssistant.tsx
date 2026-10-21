@@ -25,7 +25,8 @@ import "../css/AuraAssistant.css";
 import auraLogo from "../assets/images/Aura-Logo.png";
 import auraDatabase from "../database/aura.json";
 import { processCommand } from "../command/AuraCommand";
-import { clearConversation } from "../command/AuraConversation";
+// NEW: Import getUserProfile to display memory
+import { clearConversation, getUserProfile } from "../command/AuraConversation";
 
 // 1. IMPORT SPLASH + WELCOME SCREENS
 import SplashScreen from "./SplashScreen";
@@ -128,6 +129,9 @@ const AuraAssistant: React.FC = () => {
   const [lightMode, setLightMode] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
 
+  // NEW: State for User Profile Memory
+  const [userProfile, setUserProfile] = useState(getUserProfile());
+
   // Popup Modal State
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -153,9 +157,9 @@ const AuraAssistant: React.FC = () => {
   const mountedRef = useRef(true);
   const lastCommandTextRef = useRef("");
   
+  // Auto Close Timer
   const autoCloseTimeoutRef = useRef<any>(null);
 
-  // Detect mobile screen size
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth <= 760);
@@ -343,6 +347,7 @@ const AuraAssistant: React.FC = () => {
     return startAnimation(canvas, mainAnimationRef, window);
   }, [startAnimation, bootStage]);
 
+  // Start animation for the modal orb
   useEffect(() => {
     if (showResponseModal && !isMobile && modalCanvasRef.current) {
       return startAnimation(modalCanvasRef.current, modalAnimationRef, window);
@@ -414,9 +419,9 @@ const AuraAssistant: React.FC = () => {
     
     autoCloseTimeoutRef.current = setTimeout(() => {
       if (window.speechSynthesis.speaking) {
-        handleTypingComplete();
+        handleTypingComplete(); // If still speaking, wait 3 more seconds
       } else {
-        setShowResponseModal(false);
+        setShowResponseModal(false); // Close it
       }
     }, 3000);
   }, []);
@@ -440,9 +445,12 @@ const AuraAssistant: React.FC = () => {
           auraSpeak,
           setEmbeddedVideo,
           stopMic,
+        }).then(() => {
+          // NEW: Instantly update the memory profile UI after any command
+          setUserProfile(getUserProfile());
         });
         
-        // ONLY SHOW MODAL ON DESKTOP
+        // Show modal after a brief delay
         if (!isMobile) {
           setTimeout(() => {
             setShowResponseModal(true);
@@ -993,13 +1001,43 @@ const AuraAssistant: React.FC = () => {
       {showLogs && (
         <div className="aura-notification" style={{ top: '90px', right: '110px', width: '380px' }}>
           <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontSize: '11px' }}><FaTerminal /> SYSTEM SETTINGS & LOGS</strong>
+          
+          {/* Voice Selector */}
           <div style={{ marginTop: '15px', marginBottom: '15px' }}>
             <label style={{ display: 'block', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>SELECT AURA'S VOICE:</label>
             <select value={selectedVoiceName} onChange={(e) => setSelectedVoiceName(e.target.value)} style={{ width: '100%', padding: '8px', background: '#0f0d23', color: '#fff', border: '1px solid #5b21b6', borderRadius: '5px', fontSize: '12px', outline: 'none' }}>
               {availableVoices.map((voice, idx) => (<option key={idx} value={voice.name}>{voice.name} ({voice.lang})</option>))}
             </select>
           </div>
-          <div style={{ fontSize: '11px', color: '#928bac', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', borderTop: '1px solid #2a2352', paddingTop: '10px' }}>
+
+          {/* NEW: MEMORY PROFILE SECTION */}
+          <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '5px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>
+              <span>USER MEMORY PROFILE:</span>
+              <span style={{ color: '#a78bfa', cursor: 'pointer' }} onClick={() => setUserProfile(getUserProfile())}>↻ REFRESH</span>
+            </label>
+            
+            <p style={{ margin: 0, fontSize: '12px', color: '#fff', fontFamily: 'monospace' }}>
+              <strong>Name:</strong> {userProfile.name}
+            </p>
+            
+            {userProfile.facts && userProfile.facts.length > 0 ? (
+               <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#d2cbe6', fontFamily: 'monospace' }}>
+                 <strong>Facts:</strong>
+                 <br/>
+                 {userProfile.facts.map((fact, idx) => (
+                   <span key={idx}>• {fact}<br/></span>
+                 ))}
+               </p>
+            ) : (
+              <p style={{ margin: '5px 0 0', fontSize: '10px', color: '#928bac', fontFamily: 'monospace', fontStyle: 'italic' }}>
+                No additional facts saved yet.
+              </p>
+            )}
+          </div>
+
+          {/* Logs Section */}
+          <div style={{ fontSize: '11px', color: '#928bac', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', borderTop: '1px solid #2a2352', paddingTop: '10px' }}>
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
             {history.length > 0 && <p style={{ color: '#c4b5fd' }}>• Last command: "{history[0].command}"</p>}

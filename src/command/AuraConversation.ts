@@ -25,7 +25,44 @@ const defaultProfile: UserProfile = {
 const loadProfile = (): UserProfile => {
   try {
     const saved = localStorage.getItem("aura_user_profile");
-    return saved ? JSON.parse(saved) : defaultProfile;
+    if (!saved) return defaultProfile;
+    
+    const parsed = JSON.parse(saved) as UserProfile;
+    let needsSaving = false;
+    
+    // AUTO-REPAIR: Fix corrupted names
+    if (parsed.name) {
+      const lowerName = parsed.name.toLowerCase();
+      const badWords = ["save it", "check the database", "check", "database", "please", "thanks", "this"];
+      if (badWords.some(word => lowerName.includes(word))) {
+        console.warn("[Aura Memory] Detected corrupted name. Resetting...");
+        parsed.name = "Operator";
+        needsSaving = true;
+      }
+    }
+    
+    // AUTO-REPAIR: Clean up messy facts
+    if (parsed.facts && parsed.facts.length > 0) {
+      const cleanedFacts = parsed.facts.map(fact => {
+        let cleaned = fact
+          .replace(/\b(aura|this|my|the|a|an)\b/gi, "")
+          .replace(/\s+/g, ' ')
+          .trim();
+        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+      }).filter(fact => fact.length > 0); // Remove empty ones
+
+      // If the array changed, update it
+      if (JSON.stringify(cleanedFacts) !== JSON.stringify(parsed.facts)) {
+        parsed.facts = cleanedFacts;
+        needsSaving = true;
+      }
+    }
+    
+    if (needsSaving) {
+      localStorage.setItem("aura_user_profile", JSON.stringify(parsed));
+    }
+    
+    return parsed;
   } catch {
     return defaultProfile;
   }
@@ -38,6 +75,12 @@ export const getUserProfile = (): UserProfile => userProfile;
 export const saveUserProfile = (profile: Partial<UserProfile>) => {
   userProfile = { ...userProfile, ...profile };
   localStorage.setItem("aura_user_profile", JSON.stringify(userProfile));
+};
+
+// Function to clear all user memory manually via command
+export const clearUserMemory = () => {
+  userProfile = { name: "Operator", facts: [] };
+  localStorage.removeItem("aura_user_profile");
 };
 // ---------------------------
 
