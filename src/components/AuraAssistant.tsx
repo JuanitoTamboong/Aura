@@ -457,7 +457,7 @@ const AuraAssistant: React.FC = () => {
     setStatusText("LISTENING");
     setTranscriptText("I'm listening. Say your command.");
     
-    // ★ FIX: Flush the audio buffer so the wake word isn't sent as a command
+    // Flush the audio buffer so the wake word isn't sent as a command
     try {
       recognitionRef.current?.abort(); 
       setTimeout(() => { recognitionRef.current?.start(); }, 100);
@@ -480,6 +480,7 @@ const AuraAssistant: React.FC = () => {
     setMicMode("off");
     setHandsFree(false);
     handsFreeRef.current = false;
+    localStorage.setItem("aura_hands_free", "false"); // ★ SAVES TO LOCAL STORAGE
     setIsListening(false);
     isListeningRef.current = false;
     stopRequestedRef.current = true;
@@ -586,7 +587,7 @@ const AuraAssistant: React.FC = () => {
         if (STOP_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
 
-          // ★ NEW — in hands-free, "stop" returns to standby
+          // ★ FIX: In hands-free, "stop" sends to standby but KEEPS hands-free ON
           if (handsFreeRef.current) {
             clearConversation();
             setEmbeddedVideo(null);
@@ -604,22 +605,24 @@ const AuraAssistant: React.FC = () => {
             return;
           }
 
-          // Original behavior when not in hands-free
-          stopMic(); 
-          clearConversation();
-          setEmbeddedVideo(null);
-          setTranscriptText(`Stopped.`); 
-          setCommandDetails({
-            title: "Standing By",
-            category: "Awaiting Command",
-            match: "100%",
-            type: "text",
-            data: "System paused. Click INITIATE VOICE to start a new session.",
-          });
-          setShowResponseModal(false); 
-          if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
-          lastCommandTextRef.current = ""; 
-          return;
+          // Original behavior (Only runs if hands-free is OFF)
+          if (!handsFreeRef.current) {
+            stopMic(); 
+            clearConversation();
+            setEmbeddedVideo(null);
+            setTranscriptText(`Stopped.`); 
+            setCommandDetails({
+              title: "Standing By",
+              category: "Awaiting Command",
+              match: "100%",
+              type: "text",
+              data: "System paused. Click INITIATE VOICE to start a new session.",
+            });
+            setShowResponseModal(false); 
+            if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+            lastCommandTextRef.current = ""; 
+            return;
+          }
         }
 
         if (WAIT_WORDS.test(heardText)) {
@@ -681,7 +684,8 @@ const AuraAssistant: React.FC = () => {
 
       recognition.onend = () => {
         const mode = micModeRef.current;
-        // ★ CHANGED — also auto-restart in standby
+        
+        // ★ FIX: Auto-restart the mic silently if we are in hands-free (standby or active)
         if ((mode === "standby" || mode === "active") && !stopRequestedRef.current) {
           try {
             recognition.start();
@@ -689,6 +693,7 @@ const AuraAssistant: React.FC = () => {
             console.error("Mic auto-restart failed:", e);
           }
         } else {
+          // ONLY reset the UI if we are completely off
           setStatusText((previous: string) =>
             previous === "LISTENING" || previous === "STANDBY"
               ? "SYSTEM ONLINE"
@@ -721,6 +726,7 @@ const AuraAssistant: React.FC = () => {
 
     setHandsFree(true);
     handsFreeRef.current = true;
+    localStorage.setItem("aura_hands_free", "true"); // ★ SAVES TO LOCAL STORAGE
     stopRequestedRef.current = false;
     lastCommandTextRef.current = "";
     wakeCooldownRef.current = false;
@@ -783,6 +789,16 @@ const AuraAssistant: React.FC = () => {
       setStatusText("MICROPHONE UNAVAILABLE");
     }
   }, [setupSpeechRecognition, enterActiveMode, exitHandsFree]);
+
+  // ★ NEW — Check LocalStorage on boot (After "Welcome" screen completes)
+  useEffect(() => {
+    if (bootStage === "ready") {
+      const savedHandsFree = localStorage.getItem("aura_hands_free");
+      if (savedHandsFree === "true") {
+        startHandsFree();
+      }
+    }
+  }, [bootStage, startHandsFree]);
 
   const handlePopOut = useCallback(async () => {
     const browser = window as any;
