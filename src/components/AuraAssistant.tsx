@@ -741,6 +741,33 @@ const AuraAssistant: React.FC = () => {
     }
   }, [bootStage, startHandsFree]);
 
+  // ★ NEW: Auto-close modal AFTER Aura finishes speaking
+  useEffect(() => {
+    if (!showResponseModal || isMobile) return;
+
+    const checkSpeechAndClose = () => {
+      // If Aura is not speaking anymore, start the 3-second close timer
+      if (!window.speechSynthesis.speaking) {
+        if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+        
+        autoCloseTimeoutRef.current = setTimeout(() => {
+          setShowResponseModal(false);
+        }, 3000);
+      } else {
+        // If still speaking, keep checking
+        setTimeout(checkSpeechAndClose, 500);
+      }
+    };
+
+    // Initial delay to allow the speech synthesis to start
+    const initialDelay = setTimeout(checkSpeechAndClose, 1000);
+    
+    return () => {
+      clearTimeout(initialDelay);
+      if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+    };
+  }, [showResponseModal, isMobile]);
+
   const handlePopOut = useCallback(async () => {
     const browser = window as any;
 
