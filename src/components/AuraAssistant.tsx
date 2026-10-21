@@ -25,10 +25,8 @@ import "../css/AuraAssistant.css";
 import auraLogo from "../assets/images/Aura-Logo.png";
 import auraDatabase from "../database/aura.json";
 import { processCommand } from "../command/AuraCommand";
-// NEW: Import getUserProfile to display memory
 import { clearConversation, getUserProfile } from "../command/AuraConversation";
 
-// 1. IMPORT SPLASH + WELCOME SCREENS
 import SplashScreen from "./SplashScreen";
 import WelcomeScreen from "./WelcomeScreen";
 
@@ -54,16 +52,11 @@ const INITIAL_DETAILS: CommandDetails = {
   data: "Your command results will appear here.",
 };
 
-// 2. BOOT STAGES: splash → welcome → ready
 type BootStage = "splash" | "welcome" | "ready";
 
-// Interrupt words
 const STOP_WORDS = /\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/i;
 const WAIT_WORDS = /\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/i;
 
-// =========================================================
-// TYPEWRITER COMPONENT
-// =========================================================
 const Typewriter = ({ 
   text, 
   speed = 12, 
@@ -129,16 +122,13 @@ const AuraAssistant: React.FC = () => {
   const [lightMode, setLightMode] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
 
-  // NEW: State for User Profile Memory
   const [userProfile, setUserProfile] = useState(getUserProfile());
 
-  // Popup Modal State
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
   const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
 
-  // Voice Selection State
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
 
@@ -157,7 +147,6 @@ const AuraAssistant: React.FC = () => {
   const mountedRef = useRef(true);
   const lastCommandTextRef = useRef("");
   
-  // Auto Close Timer
   const autoCloseTimeoutRef = useRef<any>(null);
 
   useEffect(() => {
@@ -210,9 +199,6 @@ const AuraAssistant: React.FC = () => {
     };
   }, []);
 
-  // ---------------------------------------------------------
-  // PARTICLE ORB
-  // ---------------------------------------------------------
   const startAnimation = useCallback(
     (
       canvas: HTMLCanvasElement,
@@ -347,16 +333,12 @@ const AuraAssistant: React.FC = () => {
     return startAnimation(canvas, mainAnimationRef, window);
   }, [startAnimation, bootStage]);
 
-  // Start animation for the modal orb
   useEffect(() => {
     if (showResponseModal && !isMobile && modalCanvasRef.current) {
       return startAnimation(modalCanvasRef.current, modalAnimationRef, window);
     }
   }, [showResponseModal, startAnimation, isMobile]);
 
-  // ---------------------------------------------------------
-  // SPEECH OUTPUT
-  // ---------------------------------------------------------
   const auraSpeak = useCallback((text: string) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
@@ -385,9 +367,6 @@ const AuraAssistant: React.FC = () => {
     }, 50);
   }, [selectedVoiceName]);
 
-  // ---------------------------------------------------------
-  // COMMAND HISTORY
-  // ---------------------------------------------------------
   const addHistory = useCallback((command: string) => {
     const cleaned = command.trim();
     if (!cleaned) return;
@@ -419,9 +398,9 @@ const AuraAssistant: React.FC = () => {
     
     autoCloseTimeoutRef.current = setTimeout(() => {
       if (window.speechSynthesis.speaking) {
-        handleTypingComplete(); // If still speaking, wait 3 more seconds
+        handleTypingComplete();
       } else {
-        setShowResponseModal(false); // Close it
+        setShowResponseModal(false);
       }
     }, 3000);
   }, []);
@@ -446,11 +425,9 @@ const AuraAssistant: React.FC = () => {
           setEmbeddedVideo,
           stopMic,
         }).then(() => {
-          // NEW: Instantly update the memory profile UI after any command
           setUserProfile(getUserProfile());
         });
         
-        // Show modal after a brief delay
         if (!isMobile) {
           setTimeout(() => {
             setShowResponseModal(true);
@@ -466,9 +443,6 @@ const AuraAssistant: React.FC = () => {
     [addHistory, auraSpeak, stopMic, isMobile]
   );
 
-  // ---------------------------------------------------------
-  // SPEECH RECOGNITION
-  // ---------------------------------------------------------
   const setupSpeechRecognition = useCallback(
     (targetWindow: Window = window) => {
       const SpeechRecognition =
@@ -611,9 +585,6 @@ const AuraAssistant: React.FC = () => {
     };
   }, [setupSpeechRecognition]);
 
-  // ---------------------------------------------------------
-  // MIC TOGGLE
-  // ---------------------------------------------------------
   const toggleMic = useCallback(() => {
     if (isListeningRef.current) {
       isListeningRef.current = false;
@@ -647,9 +618,6 @@ const AuraAssistant: React.FC = () => {
     }
   }, [setupSpeechRecognition]);
 
-  // ---------------------------------------------------------
-  // PICTURE-IN-PICTURE
-  // ---------------------------------------------------------
   const handlePopOut = useCallback(async () => {
     const browser = window as any;
 
@@ -999,10 +967,9 @@ const AuraAssistant: React.FC = () => {
       </header>
 
       {showLogs && (
-        <div className="aura-notification" style={{ top: '90px', right: '110px', width: '380px' }}>
+        <div className="aura-notification">
           <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontSize: '11px' }}><FaTerminal /> SYSTEM SETTINGS & LOGS</strong>
           
-          {/* Voice Selector */}
           <div style={{ marginTop: '15px', marginBottom: '15px' }}>
             <label style={{ display: 'block', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>SELECT AURA'S VOICE:</label>
             <select value={selectedVoiceName} onChange={(e) => setSelectedVoiceName(e.target.value)} style={{ width: '100%', padding: '8px', background: '#0f0d23', color: '#fff', border: '1px solid #5b21b6', borderRadius: '5px', fontSize: '12px', outline: 'none' }}>
@@ -1010,7 +977,6 @@ const AuraAssistant: React.FC = () => {
             </select>
           </div>
 
-          {/* NEW: MEMORY PROFILE SECTION */}
           <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '5px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
             <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>
               <span>USER MEMORY PROFILE:</span>
@@ -1036,7 +1002,6 @@ const AuraAssistant: React.FC = () => {
             )}
           </div>
 
-          {/* Logs Section */}
           <div style={{ fontSize: '11px', color: '#928bac', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', borderTop: '1px solid #2a2352', paddingTop: '10px' }}>
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
@@ -1056,7 +1021,7 @@ const AuraAssistant: React.FC = () => {
           </div>
 
           <button type="button" className="aura-search-box" onClick={() => setShowSearch((value) => !value)}>
-            <FaMagnifyingGlass /><span>{showSearch ? "Hide search" : "Search commands"}</span><span className="aura-shortcut">⌕</span>
+            <FaMagnifyingGlass /><span>{showSearch ? "Hide search" : "Search commands"}</span>
           </button>
 
           {showSearch && <input className="aura-search-input" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Filter your commands..." />}

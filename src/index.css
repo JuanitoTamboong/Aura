@@ -1,18 +1,1 @@
 @import "tailwindcss";
-
-/* Reset default browser margins and force dark mode */
-body {
-  margin: 0;
-  padding: 0;
-  background-color: #05060f; /* Matches your darkBg */
-  color: #ffffff;
-  overflow-x: hidden;
-}
-
-/* Remove the max-width constraint on the React root so it goes full screen */
-#root {
-  width: 100%;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}

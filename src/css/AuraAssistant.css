@@ -50,6 +50,32 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 ::selection { color: white; background: rgba(139, 92, 246, 0.55); }
 
 /* =========================================================
+   CUSTOM SCROLLBAR (THEME MATCH)
+   ========================================================= */
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #39305c transparent;
+}
+
+/* Chrome, Edge, Safari */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #39305c;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--aura-violet);
+}
+
+/* =========================================================
    APP BACKGROUND
    ========================================================= */
 
@@ -173,7 +199,9 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   z-index: 100;
   top: 92px;
   right: 26px;
-  width: min(300px, calc(100vw - 32px));
+  width: min(380px, calc(100vw - 32px)); 
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
   padding: 18px;
   border: 1px solid var(--aura-border-bright);
   border-radius: 14px;
@@ -253,7 +281,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 .aura-search-box:hover { border-color: var(--aura-border-bright); }
 .aura-search-box > span:nth-of-type(1) { flex: 1; font-size: 13px; }
-.aura-shortcut { color: var(--aura-subtle); }
 .aura-search-input {
   width: 100%;
   margin-top: 8px;
@@ -270,7 +297,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-archive-heading { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 12px; color: var(--aura-muted); font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.12em; }
 .aura-archive-heading span:last-child { color: var(--aura-violet); }
 
-.aura-history-list { display: flex; flex: 1; flex-direction: column; gap: 7px; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-right: 3px; scrollbar-width: thin; scrollbar-color: #39305c transparent; }
+.aura-history-list { display: flex; flex: 1; flex-direction: column; gap: 7px; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-right: 3px; }
 .aura-history-item {
   display: flex;
   align-items: center;
@@ -491,7 +518,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 
 .aura-output-heading { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; margin: 25px 0 12px; color: #a69cbe; font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.13em; }
 .aura-output-heading .aura-live-dot { width: 6px; height: 6px; }
-.aura-output-content { flex: 1; min-height: 90px; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #39305c transparent; }
+.aura-output-content { flex: 1; min-height: 90px; overflow-x: hidden; overflow-y: auto; }
 
 .aura-response { padding: 15px; border: 1px solid rgba(139, 92, 246, 0.19); border-radius: 10px; background: linear-gradient(145deg, rgba(30, 22, 58, 0.7), rgba(12, 10, 28, 0.8)); }
 .aura-response-label { display: flex; align-items: center; gap: 8px; color: #b6a2ed; font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.1em; }
@@ -555,6 +582,17 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     radial-gradient(ellipse at 90% 5%, rgba(147, 197, 253, 0.2), transparent 34%),
     linear-gradient(145deg, #f5f3ff 0%, #eae6fa 100%);
   color: #21183c;
+}
+
+/* Light mode scrollbar adjustments */
+.aura-light ::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+}
+.aura-light ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--aura-violet);
+}
+.aura-light * {
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 .aura-light .aura-header {
@@ -691,32 +729,73 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 
 @media (max-width: 760px) {
-  .aura-app { height: auto; min-height: 100dvh; padding: 10px; overflow: visible; }
-  .aura-header { min-height: 64px; gap: 8px; padding: 9px 10px; }
+  .aura-app { 
+    height: 100dvh; 
+    min-height: 100dvh;
+    padding: 10px; 
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .aura-header { min-height: 64px; gap: 8px; padding: 9px 10px; flex-shrink: 0; }
   .aura-brand { gap: 8px; }
   .aura-brand-mark { width: 36px; height: 36px; }
   .aura-brand h1 { font-size: 14px; }
   .aura-brand p, .aura-header-status, .aura-system-version { display: none; }
   .aura-header-actions { gap: 2px; }
   .aura-header-actions .aura-icon-button { width: 32px; height: 32px; }
-  .aura-dashboard { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+
+  .aura-dashboard { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 12px; 
+    margin-top: 12px; 
+    flex: 1; 
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 12px;
+  }
 
   .aura-center {
     order: 1;
-    min-height: calc(100dvh - 100px);
+    min-height: auto;
     height: auto;
-    overflow: hidden;
+    overflow: visible;
+    flex-shrink: 0;
   }
 
-  .aura-sidebar { order: 2; min-height: 280px; max-height: 440px; }
-  .aura-results { order: 3; min-height: 390px; max-height: none; }
+  .aura-sidebar { order: 2; min-height: auto; max-height: none; flex-shrink: 0; }
+  .aura-results { order: 3; min-height: auto; max-height: none; flex-shrink: 0; }
 
   .aura-core-stage { padding: 20px 10px; }
   .aura-orb { width: min(275px, 72vw); }
   .aura-greeting h2 { font-size: 27px; }
 
-  .aura-footer { flex-wrap: wrap; justify-content: center; padding: 12px 0; text-align: center; }
-  .aura-notification { position: fixed; top: 80px; right: 12px; }
+  .aura-footer { 
+    flex-shrink: 0;
+    flex-wrap: wrap; 
+    justify-content: center; 
+    padding: 12px 0 6px; 
+    text-align: center; 
+    gap: 8px;
+    width: 100%;
+    margin-top: auto;
+    border-top: 1px solid rgba(167, 139, 250, 0.1);
+  }
+
+  .aura-footer span:last-child {
+    display: none;
+  }
+
+  .aura-notification {
+    position: fixed;
+    top: 80px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: calc(100vh - 100px);
+  }
 }
 
 @media (max-width: 400px) {
@@ -725,7 +804,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-brand h1 { font-size: 12px; }
 
   .aura-center {
-    min-height: calc(100dvh - 100px);
+    min-height: auto;
     height: auto;
   }
 
@@ -734,6 +813,14 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-mic-button { min-width: 190px; }
 
   .aura-core-stage { padding: 20px 10px; }
+
+  .aura-notification {
+    top: 70px;
+    left: 8px;
+    right: 8px;
+    padding: 14px;
+    max-height: calc(100vh - 90px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
