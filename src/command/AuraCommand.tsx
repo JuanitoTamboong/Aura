@@ -6,8 +6,6 @@ import {
   clearConversation,
   getConversationForPrompt,
   hasRecentConversation,
-  getUserProfile,
-  saveUserProfile,
 } from './AuraConversation';
 
 interface CommandDetails {
@@ -109,39 +107,6 @@ export const processCommand = async ({
   };
 
   try {
-    // --- NEW: MEMORY SAVING LOGIC ---
-    // 1. Check if the user is telling Aura their name (English or Tagalog)
-    const nameMatch = normalized.match(/(?:my name is|i am|ako si|pangalan ko ay)\s+([a-z\s]+)/i);
-    if (nameMatch && nameMatch[1]) {
-      const newName = nameMatch[1].trim().replace(/[.,!?]/g, ''); 
-      saveUserProfile({ name: newName });
-      
-      return await respond(`Nice to meet you, ${newName}. I have saved your name to my memory.`, {
-        title: "Memory Updated",
-        category: "System",
-        data: `I will remember that your name is ${newName}.`,
-      });
-    }
-
-    // 2. Check if user asks if Aura knows them
-    if (/\b(kilala mo ako|do you know me|who am i|sino ako)\b/i.test(normalized)) {
-      const profile = getUserProfile();
-      if (profile.name !== "Operator") {
-         return await respond(`Yes, you are ${profile.name}. I remember you.`, {
-           title: "User Identity",
-           category: "Memory",
-           data: `You are ${profile.name}.`,
-         });
-      } else {
-         return await respond(`I don't know your name yet. Try saying "My name is [your name]".`, {
-           title: "Unknown User",
-           category: "Memory",
-           data: "I don't know you yet.",
-         });
-      }
-    }
-    // --------------------------------
-
     // CLOSE EMBEDDED PLAYER
     if (/\b(close|hide|exit|dismiss)\b/.test(normalized) && /\b(video|player|it|youtube|that)\b/.test(normalized)) {
       setEmbeddedVideo?.(null);
@@ -339,21 +304,16 @@ export const processCommand = async ({
        enhancedPrompt = `${text}. Reply with ONLY the exact name of the song or video they are referring to in the history. Do not add any other words.`;
     }
 
-    // --- NEW: Inject User Profile into AI Prompt ---
-    const profile = getUserProfile();
-    const userContext = `You are Aura, a voice assistant. The user you are speaking to is named "${profile.name}". Treat them personally and remember their name.`;
-
     let promptWithContext = "";
     if (history) {
       promptWithContext = 
-        `${userContext} Continue the conversation naturally based on the recent history. ` +
+        `You are Aura, a voice assistant. Continue the conversation naturally based on the recent history. ` +
         `Answer the new user message directly in a short, spoken-friendly way. Do not ask for clarification if the history already provides the context.\n\n` +
         `--- Recent conversation ---\n${history}\n--- End of conversation ---\n\n` +
         `User: ${enhancedPrompt}\nAura:`;
     } else {
-      promptWithContext = `${userContext}\nUser: ${enhancedPrompt}\nAura:`;
+      promptWithContext = enhancedPrompt;
     }
-    // ----------------------------------------------
 
     const reply = await askAI(promptWithContext);
     let safeReply = (reply && reply.trim()) ? reply.trim() : "I couldn't find information on that topic.";
