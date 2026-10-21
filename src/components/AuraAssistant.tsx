@@ -100,7 +100,6 @@ const AuraAssistant: React.FC = () => {
       const voices = window.speechSynthesis.getVoices();
       setAvailableVoices(voices);
 
-      // Auto-select "David" (deep male) if available, otherwise first English voice
       if (!selectedVoiceName && voices.length > 0) {
         const defaultVoice = voices.find(v => v.name.includes("David")) ||
                              voices.find(v => v.lang.includes("en"));
@@ -136,7 +135,6 @@ const AuraAssistant: React.FC = () => {
   // ---------------------------------------------------------
   // PARTICLE ORB
   // ---------------------------------------------------------
-
   const startAnimation = useCallback(
     (
       canvas: HTMLCanvasElement,
@@ -152,7 +150,6 @@ const AuraAssistant: React.FC = () => {
       let frame = 0;
       let disposed = false;
 
-      // Check if this is running inside the PiP window and in light mode
       const isLightPiP = targetWindow.document.body.classList.contains("aura-light-pip");
 
       const particles = Array.from({ length: 240 }, (_, i) => ({
@@ -160,7 +157,6 @@ const AuraAssistant: React.FC = () => {
         size: 0.8 + Math.random() * 1.4,
         speed: 0.7 + Math.random() * 0.6,
         offset: Math.random() * Math.PI * 2,
-        // Brighter colors for light mode PiP, standard colors for dark mode
         color: isLightPiP 
           ? (i % 2 === 0 ? "electric-blue" : "hot-pink") 
           : (i % 2 === 0 ? "cyan" : "violet"),
@@ -208,12 +204,11 @@ const AuraAssistant: React.FC = () => {
 
           ctx.beginPath();
           
-          // Apply the color based on the particle type
           if (particle.color === "electric-blue") {
-            ctx.fillStyle = `rgba(0, 240, 255, ${pulse})`; // Bright Cyan/Blue
+            ctx.fillStyle = `rgba(0, 240, 255, ${pulse})`;
             ctx.shadowColor = "#00f0ff";
           } else if (particle.color === "hot-pink") {
-            ctx.fillStyle = `rgba(255, 0, 255, ${pulse})`; // Bright Magenta/Pink
+            ctx.fillStyle = `rgba(255, 0, 255, ${pulse})`;
             ctx.shadowColor = "#ff00ff";
           } else if (particle.color === "cyan") {
             ctx.fillStyle = `rgba(80, 210, 255, ${pulse})`;
@@ -224,7 +219,6 @@ const AuraAssistant: React.FC = () => {
           }
 
           ctx.shadowBlur = active ? 12 : 5;
-
           ctx.arc(x, y, size, 0, Math.PI * 2);
           ctx.fill();
         });
@@ -238,17 +232,11 @@ const AuraAssistant: React.FC = () => {
         [0.39, 0.44].forEach((factor, index) => {
           ctx.beginPath();
           ctx.ellipse(
-            0,
-            0,
-            radius * factor * 2.1,
-            radius * factor * 1.1,
-            index * 0.4,
-            0,
-            Math.PI * 2
+            0, 0, radius * factor * 2.1, radius * factor * 1.1,
+            index * 0.4, 0, Math.PI * 2
           );
 
-          ctx.strokeStyle =
-            index === 0
+          ctx.strokeStyle = index === 0
               ? "rgba(34, 211, 238, 0.15)"
               : "rgba(167, 139, 250, 0.13)";
 
@@ -277,50 +265,54 @@ const AuraAssistant: React.FC = () => {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    // 3. ONLY START ANIMATION WHEN FULLY BOOTED
     if (!canvas || bootStage !== "ready") return;
-
     return startAnimation(canvas, mainAnimationRef, window);
   }, [startAnimation, bootStage]);
 
   // ---------------------------------------------------------
-  // SPEECH OUTPUT (WARM-UP + MONSTER VOICE)
+  // SPEECH OUTPUT (ANTI-ECHO FIX)
   // ---------------------------------------------------------
-
   const auraSpeak = useCallback((text: string) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
+    // 1. PAUSE THE MIC so it doesn't hear Aura's voice
+    try {
+      recognitionRef.current?.stop();
+    } catch {}
+
     window.speechSynthesis.cancel();
 
-    // 1. WARM-UP: Speak a silent space to wake up the browser's TTS engine instantly
     const warmUp = new SpeechSynthesisUtterance(" ");
     warmUp.volume = 0;
     window.speechSynthesis.speak(warmUp);
 
-    // 2. SPEAK THE REAL TEXT
     setTimeout(() => {
       const utterance = new SpeechSynthesisUtterance(text);
-
-      // MONSTER VOICE SETTINGS
       utterance.pitch = 0.6;
       utterance.rate = 0.85;
 
-      // Find the voice the user selected from the dropdown
       const voices = window.speechSynthesis.getVoices();
       const chosenVoice = voices.find(v => v.name === selectedVoiceName);
+      if (chosenVoice) utterance.voice = chosenVoice;
 
-      if (chosenVoice) {
-        utterance.voice = chosenVoice;
-      }
+      // 2. WHEN AURA FINISHES SPEAKING, TURN THE MIC BACK ON
+      utterance.onend = () => {
+        // Only restart if you haven't manually clicked "END SESSION"
+        if (isListeningRef.current) {
+          try {
+            recognitionRef.current?.start();
+            setStatusText("LISTENING");
+          } catch {}
+        }
+      };
 
       window.speechSynthesis.speak(utterance);
-    }, 50); // 50ms is enough time to wake the engine without a noticeable delay
+    }, 50);
   }, [selectedVoiceName]);
 
   // ---------------------------------------------------------
   // COMMAND HISTORY
   // ---------------------------------------------------------
-
   const addHistory = useCallback((command: string) => {
     const cleaned = command.trim();
     if (!cleaned) return;
@@ -341,7 +333,9 @@ const AuraAssistant: React.FC = () => {
   const runCommand = useCallback(
     (command: string) => {
       const cleaned = command.trim();
-      if (!cleaned) return;
+      
+      // 3. Prevent tiny background noises from triggering commands
+      if (!cleaned || cleaned.length < 2) return;
 
       addHistory(cleaned);
       setTranscriptText(`"${cleaned}"`);
@@ -362,9 +356,7 @@ const AuraAssistant: React.FC = () => {
 
             try {
               recognitionRef.current?.stop();
-            } catch {
-              // Recognition may already be stopped.
-            }
+            } catch {}
 
             setStatusText("SYSTEM ONLINE");
           },
@@ -379,9 +371,8 @@ const AuraAssistant: React.FC = () => {
   );
 
   // ---------------------------------------------------------
-  // SPEECH RECOGNITION
+  // SPEECH RECOGNITION (ANTI-LOOP FIX)
   // ---------------------------------------------------------
-
   const setupSpeechRecognition = useCallback(
     (targetWindow: Window = window) => {
       const SpeechRecognition =
@@ -395,15 +386,15 @@ const AuraAssistant: React.FC = () => {
 
       try {
         recognitionRef.current?.abort();
-      } catch {
-        // Ignore previous recognition instance.
-      }
+      } catch {}
 
       const recognition = new SpeechRecognition();
 
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
+
+      let lastCommandTime = 0; // Prevents mobile double-firing
 
       recognition.onresult = (event: any) => {
         let interim = "";
@@ -426,19 +417,23 @@ const AuraAssistant: React.FC = () => {
           setTranscriptText(`"${interim}"`);
         }
 
-        finalCommands.forEach(runCommand);
+        // 4. Cooldown logic (1.5 seconds) to prevent the mobile mic from firing duplicates
+        const now = Date.now();
+        if (now - lastCommandTime > 1500) {
+          finalCommands.forEach((cmd) => {
+            lastCommandTime = now;
+            runCommand(cmd);
+          });
+        }
       };
 
       recognition.onerror = (event: any) => {
-        if (event.error === "no-speech" || event.error === "aborted") {
-          return;
-        }
+        if (event.error === "no-speech" || event.error === "aborted") return;
 
         isListeningRef.current = false;
         setIsListening(false);
 
-        if (event.error === "not-allowed" ||
-            event.error === "service-not-allowed") {
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
           setStatusText("MICROPHONE BLOCKED");
           setTranscriptText("Allow microphone access in your browser settings.");
         } else if (event.error === "network") {
@@ -458,11 +453,13 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
+        // 5. DO NOT restart the mic if Aura is currently speaking.
+        // The auraSpeak() function will restart it when she finishes.
+        if (window.speechSynthesis.speaking) return;
+
         try {
           recognition.start();
-        } catch {
-          // Some browsers briefly reject a restart while stopping.
-        }
+        } catch {}
       };
 
       recognitionRef.current = recognition;
@@ -476,9 +473,7 @@ const AuraAssistant: React.FC = () => {
     return () => {
       try {
         recognitionRef.current?.abort();
-      } catch {
-        // Ignore during cleanup.
-      }
+      } catch {}
     };
   }, [setupSpeechRecognition]);
 
@@ -487,9 +482,7 @@ const AuraAssistant: React.FC = () => {
 
     if (!recognition) {
       setStatusText("VOICE NOT SUPPORTED");
-      setTranscriptText(
-        "Use a supported browser with microphone access, such as desktop Chrome."
-      );
+      setTranscriptText("Use a supported browser with microphone access, such as desktop Chrome.");
       return;
     }
 
@@ -499,9 +492,7 @@ const AuraAssistant: React.FC = () => {
 
       try {
         recognition.stop();
-      } catch {
-        // Already stopped.
-      }
+      } catch {}
 
       setStatusText("SYSTEM ONLINE");
       return;
@@ -522,43 +513,31 @@ const AuraAssistant: React.FC = () => {
   // ---------------------------------------------------------
   // PICTURE-IN-PICTURE
   // ---------------------------------------------------------
-
   const handlePopOut = useCallback(async () => {
     const browser = window as any;
 
     if (!browser.documentPictureInPicture) {
       setStatusText("POP-OUT NOT SUPPORTED");
-      setTranscriptText(
-        "Your browser does not support Document Picture-in-Picture."
-      );
+      setTranscriptText("Your browser does not support Document Picture-in-Picture.");
       return;
     }
 
-    // Guard: if a PiP window is already open, just focus it instead of opening another
     if (pipOpen && pipWindowRef.current) {
-      try {
-        pipWindowRef.current.focus();
-      } catch {
-        // Ignore focus errors (some browsers restrict window.focus).
-      }
+      try { pipWindowRef.current.focus(); } catch {}
       return;
     }
 
     try {
       const pipWindow: Window =
         await browser.documentPictureInPicture.requestWindow({
-          width: 420,
-          height: 620,
+          width: 420, height: 620,
         });
 
       pipWindowRef.current = pipWindow;
 
       [...document.styleSheets].forEach((sheet) => {
         try {
-          const css = [...sheet.cssRules]
-            .map((rule) => rule.cssText)
-            .join("\n");
-
+          const css = [...sheet.cssRules].map((rule) => rule.cssText).join("\n");
           const style = pipWindow.document.createElement("style");
           style.textContent = css;
           pipWindow.document.head.appendChild(style);
@@ -576,175 +555,36 @@ const AuraAssistant: React.FC = () => {
       style.textContent = `
         * { box-sizing: border-box; }
         body {
-          margin: 0;
-          min-height: 100vh;
+          margin: 0; min-height: 100vh;
           background: radial-gradient(ellipse at 50% 40%, rgba(91,33,182,.18), transparent 55%), #080714;
-          color: #f5f3ff;
-          font-family: Rajdhani, sans-serif;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 18px;
-          transition: background 250ms ease, color 250ms ease;
+          color: #f5f3ff; font-family: Rajdhani, sans-serif;
+          display: flex; align-items: center; justify-content: center;
+          padding: 18px; transition: background 250ms ease, color 250ms ease;
         }
-        
-        /* PiP Light Mode Overrides */
-        body.aura-light-pip {
-          background: radial-gradient(ellipse at 50% 40%, rgba(196, 181, 253, 0.4), transparent 55%), #f2efff;
-          color: #1e1b36;
-        }
-        body.aura-light-pip #auraPipStatus {
-          color: #6b628a;
-        }
-        body.aura-light-pip .aura-pip-orb {
-          /* Keep dark core, but add bright light-mode glow */
-          border-color: rgba(139, 92, 246, 0.4);
-          background: radial-gradient(circle at 50% 45%, rgba(75, 38, 150, .34), rgba(20, 15, 51, .65) 40%, rgba(7, 6, 19, .95) 75%);
-          box-shadow: 0 0 0 8px rgba(139, 92, 246, 0.1), 0 0 55px rgba(139, 92, 246, 0.25), inset 0 0 45px rgba(139, 92, 246, 0.2);
-        }
-        body.aura-light-pip .aura-pip-orb::before {
-          border-color: rgba(139, 92, 246, 0.3);
-        }
-        body.aura-light-pip .aura-pip-orb .aura-orb-ring-one {
-          border-left-color: #3b82f6;
-          border-right-color: #8b5cf6;
-        }
-        body.aura-light-pip .aura-pip-orb .aura-orb-ring-two {
-          border-top-color: #3b82f6;
-          border-bottom-color: #e879f9;
-        }
-        body.aura-light-pip .aura-pip-orb .aura-orb-grid {
-          background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, 0.15) 0deg 0.5deg, transparent 0.5deg 18deg);
-          border-color: rgba(139, 92, 246, 0.2);
-        }
-
-        .aura-pip {
-          width: 100%;
-          text-align: center;
-        }
-        .aura-pip-orb {
-          position: relative;
-          isolation: isolate;
-          display: grid;
-          place-items: center;
-          width: min(260px, 72vw);
-          aspect-ratio: 1;
-          margin: 0 auto 30px auto;
-          overflow: hidden;
-          border: 1px solid rgba(139, 92, 246, .6);
-          border-radius: 50%;
-          background:
-            radial-gradient(circle at 50% 45%,
-              rgba(75, 38, 150, .34),
-              rgba(20, 15, 51, .65) 40%,
-              rgba(7, 6, 19, .95) 75%);
-          box-shadow:
-            0 0 0 8px rgba(139, 92, 246, .025),
-            0 0 0 18px rgba(139, 92, 246, .02),
-            0 0 55px rgba(124, 58, 237, .2),
-            inset 0 0 45px rgba(59, 130, 246, .09);
-          transition: all 250ms ease;
-        }
-
-        .aura-pip-orb::before {
-          content: "";
-          position: absolute;
-          inset: 9%;
-          border: 1px dashed rgba(167, 139, 250, .23);
-          border-radius: 50%;
-          animation: auraRotate 45s linear infinite;
-          transition: border-color 250ms ease;
-        }
-
-        .aura-pip-orb .aura-orb-grid {
-          position: absolute;
-          inset: 15%;
-          border: 1px solid rgba(59, 130, 246, .18);
-          border-radius: 50%;
-          background: repeating-conic-gradient(
-            from 0deg,
-            rgba(139, 92, 246, .07) 0deg .5deg,
-            transparent .5deg 18deg
-          );
-          mask-image: radial-gradient(circle, transparent 20%, black 100%);
-          -webkit-mask-image: radial-gradient(circle, transparent 20%, black 100%);
-          transition: all 250ms ease;
-        }
-
-        .aura-pip-orb .aura-orb-ring {
-          position: absolute;
-          border: 1px solid rgba(139, 92, 246, .25);
-          border-radius: 50%;
-          transition: border-color 250ms ease;
-        }
-        .aura-pip-orb .aura-orb-ring-one {
-          inset: 22%;
-          border-left-color: rgba(103, 232, 249, .65);
-          border-right-color: rgba(167, 139, 250, .65);
-          transform: rotate(-35deg);
-          animation: auraRotate 12s linear infinite;
-        }
-        .aura-pip-orb .aura-orb-ring-two {
-          inset: 29%;
-          border-top-color: rgba(103, 232, 249, .6);
-          border-bottom-color: rgba(232, 121, 249, .55);
-          transform: rotate(40deg);
-          animation: auraRotateReverse 16s linear infinite;
-        }
-
-        .aura-pip-orb .aura-core-logo {
-          position: absolute;
-          z-index: 2;
-          width: 26%;
-          height: 26%;
-          object-fit: contain;
-          opacity: .92;
-          filter:
-            drop-shadow(0 0 12px rgba(167, 139, 250, .65))
-            drop-shadow(0 0 25px rgba(59, 130, 246, .32));
-          pointer-events: none;
-        }
-
-        .aura-pip-orb canvas {
-          position: absolute;
-          inset: 0;
-          z-index: 3;
-          width: 100%;
-          height: 100%;
-          pointer-events: none;
-        }
-
+        body.aura-light-pip { background: radial-gradient(ellipse at 50% 40%, rgba(196, 181, 253, 0.4), transparent 55%), #f2efff; color: #1e1b36; }
+        body.aura-light-pip #auraPipStatus { color: #6b628a; }
+        body.aura-light-pip .aura-pip-orb { border-color: rgba(139, 92, 246, 0.4); background: radial-gradient(circle at 50% 45%, rgba(75, 38, 150, .34), rgba(20, 15, 51, .65) 40%, rgba(7, 6, 19, .95) 75%); box-shadow: 0 0 0 8px rgba(139, 92, 246, 0.1), 0 0 55px rgba(139, 92, 246, 0.25), inset 0 0 45px rgba(139, 92, 246, 0.2); }
+        body.aura-light-pip .aura-pip-orb::before { border-color: rgba(139, 92, 246, 0.3); }
+        body.aura-light-pip .aura-pip-orb .aura-orb-ring-one { border-left-color: #3b82f6; border-right-color: #8b5cf6; }
+        body.aura-light-pip .aura-pip-orb .aura-orb-ring-two { border-top-color: #3b82f6; border-bottom-color: #e879f9; }
+        body.aura-light-pip .aura-pip-orb .aura-orb-grid { background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, 0.15) 0deg 0.5deg, transparent 0.5deg 18deg); border-color: rgba(139, 92, 246, 0.2); }
+        .aura-pip { width: 100%; text-align: center; }
+        .aura-pip-orb { position: relative; isolation: isolate; display: grid; place-items: center; width: min(260px, 72vw); aspect-ratio: 1; margin: 0 auto 30px auto; overflow: hidden; border: 1px solid rgba(139, 92, 246, .6); border-radius: 50%; background: radial-gradient(circle at 50% 45%, rgba(75, 38, 150, .34), rgba(20, 15, 51, .65) 40%, rgba(7, 6, 19, .95) 75%); box-shadow: 0 0 0 8px rgba(139, 92, 246, .025), 0 0 0 18px rgba(139, 92, 246, .02), 0 0 55px rgba(124, 58, 237, .2), inset 0 0 45px rgba(59, 130, 246, .09); transition: all 250ms ease; }
+        .aura-pip-orb::before { content: ""; position: absolute; inset: 9%; border: 1px dashed rgba(167, 139, 250, .23); border-radius: 50%; animation: auraRotate 45s linear infinite; transition: border-color 250ms ease; }
+        .aura-pip-orb .aura-orb-grid { position: absolute; inset: 15%; border: 1px solid rgba(59, 130, 246, .18); border-radius: 50%; background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, .07) 0deg .5deg, transparent .5deg 18deg); mask-image: radial-gradient(circle, transparent 20%, black 100%); -webkit-mask-image: radial-gradient(circle, transparent 20%, black 100%); transition: all 250ms ease; }
+        .aura-pip-orb .aura-orb-ring { position: absolute; border: 1px solid rgba(139, 92, 246, .25); border-radius: 50%; transition: border-color 250ms ease; }
+        .aura-pip-orb .aura-orb-ring-one { inset: 22%; border-left-color: rgba(103, 232, 249, .65); border-right-color: rgba(167, 139, 250, .65); transform: rotate(-35deg); animation: auraRotate 12s linear infinite; }
+        .aura-pip-orb .aura-orb-ring-two { inset: 29%; border-top-color: rgba(103, 232, 249, .6); border-bottom-color: rgba(232, 121, 249, .55); transform: rotate(40deg); animation: auraRotateReverse 16s linear infinite; }
+        .aura-pip-orb .aura-core-logo { position: absolute; z-index: 2; width: 26%; height: 26%; object-fit: contain; opacity: .92; filter: drop-shadow(0 0 12px rgba(167, 139, 250, .65)) drop-shadow(0 0 25px rgba(59, 130, 246, .32)); pointer-events: none; }
+        .aura-pip-orb canvas { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
         @keyframes auraRotate { to { transform: rotate(325deg); } }
         @keyframes auraRotateReverse { to { transform: rotate(-320deg); } }
-
-        #auraPipStatus {
-          margin: 0 0 16px;
-          color: #b4a8d8;
-          font-family: Orbitron, sans-serif;
-          font-size: 10px;
-          letter-spacing: .14em;
-          transition: color 250ms ease;
-        }
-
-        .aura-pip button {
-          border: 1px solid rgba(196,181,253,.42);
-          background: linear-gradient(110deg, #5b21b6, #4338ca 55%, #1d4ed8);
-          color: white;
-          border-radius: 11px;
-          padding: 13px 26px;
-          cursor: pointer;
-          font-family: Orbitron, sans-serif;
-          font-size: 10px;
-          font-weight: 600;
-          letter-spacing: .13em;
-          box-shadow: 0 8px 28px rgba(91,33,182,.24), inset 0 1px rgba(255,255,255,.12);
-          transition: filter 180ms ease, transform 180ms ease;
-        }
+        #auraPipStatus { margin: 0 0 16px; color: #b4a8d8; font-family: Orbitron, sans-serif; font-size: 10px; letter-spacing: .14em; transition: color 250ms ease; }
+        .aura-pip button { border: 1px solid rgba(196,181,253,.42); background: linear-gradient(110deg, #5b21b6, #4338ca 55%, #1d4ed8); color: white; border-radius: 11px; padding: 13px 26px; cursor: pointer; font-family: Orbitron, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .13em; box-shadow: 0 8px 28px rgba(91,33,182,.24), inset 0 1px rgba(255,255,255,.12); transition: filter 180ms ease, transform 180ms ease; }
         .aura-pip button:hover { filter: brightness(1.12); transform: translateY(-1px); }
       `;
       pipWindow.document.head.appendChild(style);
 
-      // Apply light mode class if active
       if (lightMode) {
         pipWindow.document.body.classList.add("aura-light-pip");
       }
@@ -765,31 +605,15 @@ const AuraAssistant: React.FC = () => {
 
       pipWindow.document.body.appendChild(container);
 
-      const pipCanvas = pipWindow.document.getElementById(
-        "auraPipCanvas"
-      ) as HTMLCanvasElement;
-
-      const stopAnimation = startAnimation(
-        pipCanvas,
-        pipAnimationRef,
-        pipWindow
-      );
+      const pipCanvas = pipWindow.document.getElementById("auraPipCanvas") as HTMLCanvasElement;
+      const stopAnimation = startAnimation(pipCanvas, pipAnimationRef, pipWindow);
 
       const pipStatus = pipWindow.document.getElementById("auraPipStatus");
       const pipMic = pipWindow.document.getElementById("auraPipMic");
 
       const updatePip = () => {
-        if (pipStatus) {
-          pipStatus.textContent = isListeningRef.current
-            ? "LISTENING..."
-            : "AURA IS READY";
-        }
-
-        if (pipMic) {
-          pipMic.textContent = isListeningRef.current
-            ? "STOP LISTENING"
-            : "START VOICE COMMAND";
-        }
+        if (pipStatus) pipStatus.textContent = isListeningRef.current ? "LISTENING..." : "AURA IS READY";
+        if (pipMic) pipMic.textContent = isListeningRef.current ? "STOP LISTENING" : "START VOICE COMMAND";
       };
 
       updatePip();
@@ -797,17 +621,13 @@ const AuraAssistant: React.FC = () => {
 
       const syncInterval = window.setInterval(updatePip, 500);
 
-      pipWindow.addEventListener(
-        "pagehide",
-        () => {
-          window.clearInterval(syncInterval);
-          stopAnimation();
-          cancelAnimationFrame(pipAnimationRef.current);
-          pipWindowRef.current = null;
-          setPipOpen(false);
-        },
-        { once: true }
-      );
+      pipWindow.addEventListener("pagehide", () => {
+        window.clearInterval(syncInterval);
+        stopAnimation();
+        cancelAnimationFrame(pipAnimationRef.current);
+        pipWindowRef.current = null;
+        setPipOpen(false);
+      }, { once: true });
 
       setPipOpen(true);
     } catch (error) {
@@ -816,10 +636,6 @@ const AuraAssistant: React.FC = () => {
       setTranscriptText("Unable to open the floating Aura window.");
     }
   }, [startAnimation, toggleMic, pipOpen, lightMode]);
-
-  // ---------------------------------------------------------
-  // NAVIGATION AND FILTERING
-  // ---------------------------------------------------------
 
   const filteredHistory = history.filter((item) =>
     item.command.toLowerCase().includes(searchQuery.toLowerCase())
@@ -844,38 +660,20 @@ const AuraAssistant: React.FC = () => {
   };
 
   const renderResult = () => {
-    if (commandDetails.type === "video" &&
-        Array.isArray(commandDetails.data)) {
-      if (commandDetails.data.length === 0) {
-        return <p className="aura-empty">No video results returned.</p>;
-      }
+    if (commandDetails.type === "video" && Array.isArray(commandDetails.data)) {
+      if (commandDetails.data.length === 0) return <p className="aura-empty">No video results returned.</p>;
 
       return commandDetails.data.map((video: any, index: number) => (
         <article className="aura-video" key={`${video.title}-${index}`}>
-          {video.img ? (
-            <img src={video.img} alt="" loading="lazy" />
-          ) : (
-            <div className="aura-video-placeholder">
-              <FaPlay />
-            </div>
-          )}
-
+          {video.img ? <img src={video.img} alt="" loading="lazy" /> : <div className="aura-video-placeholder"><FaPlay /></div>}
           <div className="aura-video-info">
             <strong>{video.title || "Untitled video"}</strong>
             <span>VIDEO RESULT</span>
           </div>
-
-          <button
-            type="button"
-            className="aura-icon-button"
-            aria-label={`Play ${video.title || "video"}`}
+          <button type="button" className="aura-icon-button" aria-label={`Play ${video.title || "video"}`}
             onClick={() => {
               const query = video.query || video.title;
-              if (query) {
-                setEmbeddedVideo(
-                  `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1`
-                );
-              }
+              if (query) setEmbeddedVideo(`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1`);
             }}
           >
             <FaPlay />
@@ -884,10 +682,7 @@ const AuraAssistant: React.FC = () => {
       ));
     }
 
-    const resultText =
-      typeof commandDetails.data === "string"
-        ? commandDetails.data
-        : JSON.stringify(commandDetails.data, null, 2);
+    const resultText = typeof commandDetails.data === "string" ? commandDetails.data : JSON.stringify(commandDetails.data, null, 2);
 
     return (
       <div className="aura-response">
@@ -900,24 +695,15 @@ const AuraAssistant: React.FC = () => {
     );
   };
 
-  // 4. SPLASH SCREEN
-  if (bootStage === "splash") {
-    return <SplashScreen onComplete={() => setBootStage("welcome")} />;
-  }
+  if (bootStage === "splash") return <SplashScreen onComplete={() => setBootStage("welcome")} />;
+  if (bootStage === "welcome") return <WelcomeScreen onComplete={() => setBootStage("ready")} />;
 
-  // 5. WELCOME SCREEN
-  if (bootStage === "welcome") {
-    return <WelcomeScreen onComplete={() => setBootStage("ready")} />;
-  }
-
-  // 6. RENDER MAIN APP
   return (
     <div className={`aura-app ${lightMode ? "aura-light" : ""}`}>
       <div className="aura-scanlines" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-one" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-two" aria-hidden="true" />
 
-      {/* HEADER */}
       <header className="aura-header">
         <div className="aura-brand">
           <div className="aura-brand-mark">
@@ -937,213 +723,89 @@ const AuraAssistant: React.FC = () => {
         </div>
 
         <div className="aura-header-actions">
-          <button
-            type="button"
-            className="aura-icon-button"
-            title="System Logs"
-            aria-label="System Logs"
-            onClick={() => setShowLogs((value) => !value)}
-          >
-            <FaTerminal />
-          </button>
-
-          <button
-            type="button"
-            className="aura-icon-button"
-            title="Toggle appearance"
-            aria-label="Toggle appearance"
-            onClick={() => setLightMode((value) => !value)}
-          >
-            <FaRegMoon />
-          </button>
-
-          <button
-            type="button"
-            className={`aura-icon-button ${pipOpen ? "is-active" : ""}`}
-            title={pipOpen ? "Floating Aura is open" : "Open floating Aura"}
-            aria-label="Open floating Aura"
-            onClick={handlePopOut}
-            disabled={pipOpen}
-          >
-            <FaUpRightFromSquare />
-          </button>
+          <button type="button" className="aura-icon-button" title="System Logs" onClick={() => setShowLogs((value) => !value)}><FaTerminal /></button>
+          <button type="button" className="aura-icon-button" title="Toggle appearance" onClick={() => setLightMode((value) => !value)}><FaRegMoon /></button>
+          <button type="button" className={`aura-icon-button ${pipOpen ? "is-active" : ""}`} title="Open floating Aura" onClick={handlePopOut} disabled={pipOpen}><FaUpRightFromSquare /></button>
         </div>
       </header>
 
       {showLogs && (
         <div className="aura-notification" style={{ top: '90px', right: '110px', width: '380px' }}>
-          <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontSize: '11px' }}>
-            <FaTerminal /> SYSTEM SETTINGS & LOGS
-          </strong>
-
-          {/* VOICE SELECTOR DROPDOWN */}
+          <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#93c5fd', fontSize: '11px' }}><FaTerminal /> SYSTEM SETTINGS & LOGS</strong>
           <div style={{ marginTop: '15px', marginBottom: '15px' }}>
-            <label style={{ display: 'block', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>
-              SELECT AURA'S VOICE:
-            </label>
-            <select
-              value={selectedVoiceName}
-              onChange={(e) => setSelectedVoiceName(e.target.value)}
-              style={{ width: '100%', padding: '8px', background: '#0f0d23', color: '#fff', border: '1px solid #5b21b6', borderRadius: '5px', fontSize: '12px', outline: 'none' }}
-            >
-              {availableVoices.map((voice, idx) => (
-                <option key={idx} value={voice.name}>
-                  {voice.name} ({voice.lang})
-                </option>
-              ))}
+            <label style={{ display: 'block', fontSize: '10px', color: '#c4b5fd', marginBottom: '5px', fontFamily: 'monospace' }}>SELECT AURA'S VOICE:</label>
+            <select value={selectedVoiceName} onChange={(e) => setSelectedVoiceName(e.target.value)} style={{ width: '100%', padding: '8px', background: '#0f0d23', color: '#fff', border: '1px solid #5b21b6', borderRadius: '5px', fontSize: '12px', outline: 'none' }}>
+              {availableVoices.map((voice, idx) => (<option key={idx} value={voice.name}>{voice.name} ({voice.lang})</option>))}
             </select>
           </div>
-
           <div style={{ fontSize: '11px', color: '#928bac', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', borderTop: '1px solid #2a2352', paddingTop: '10px' }}>
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
-            {history.length > 0 && (
-              <p style={{ color: '#c4b5fd' }}>• Last command: "{history[0].command}"</p>
-            )}
-            {embeddedVideo && (
-              <p style={{ color: '#67e8f9' }}>• Embedded player active.</p>
-            )}
-            {pipOpen && (
-              <p style={{ color: '#67e8f9' }}>• Floating Aura window active.</p>
-            )}
+            {history.length > 0 && <p style={{ color: '#c4b5fd' }}>• Last command: "{history[0].command}"</p>}
+            {embeddedVideo && <p style={{ color: '#67e8f9' }}>• Embedded player active.</p>}
+            {pipOpen && <p style={{ color: '#67e8f9' }}>• Floating Aura window active.</p>}
           </div>
-          <button
-            type="button"
-            onClick={() => setShowLogs(false)}
-            style={{ marginTop: '15px', width: '100%' }}
-          >
-            Close Settings
-          </button>
+          <button type="button" onClick={() => setShowLogs(false)} style={{ marginTop: '15px', width: '100%' }}>Close Settings</button>
         </div>
       )}
 
-      {/* MAIN COMMAND CENTER */}
       <main className="aura-dashboard">
-        {/* LEFT: COMMAND ARCHIVE */}
         <aside className="aura-panel aura-sidebar">
           <div className="aura-panel-heading">
-            <div className="aura-section-icon">
-              <FaClockRotateLeft />
-            </div>
-            <div>
-              <span className="aura-eyebrow">DATABASE / 01</span>
-              <h2>Command Archive</h2>
-            </div>
+            <div className="aura-section-icon"><FaClockRotateLeft /></div>
+            <div><span className="aura-eyebrow">DATABASE / 01</span><h2>Command Archive</h2></div>
           </div>
 
-          <button
-            type="button"
-            className="aura-search-box"
-            onClick={() => setShowSearch((value) => !value)}
-          >
-            <FaMagnifyingGlass />
-            <span>{showSearch ? "Hide search" : "Search commands"}</span>
-            <span className="aura-shortcut">⌕</span>
+          <button type="button" className="aura-search-box" onClick={() => setShowSearch((value) => !value)}>
+            <FaMagnifyingGlass /><span>{showSearch ? "Hide search" : "Search commands"}</span><span className="aura-shortcut">⌕</span>
           </button>
 
-          {showSearch && (
-            <input
-              className="aura-search-input"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Filter your commands..."
-              aria-label="Filter command history"
-            />
-          )}
+          {showSearch && <input className="aura-search-input" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Filter your commands..." />}
 
           <div className="aura-archive-heading">
-            <span>RECENT ACTIVITY</span>
-            <span>{filteredHistory.length.toString().padStart(2, "0")}</span>
+            <span>RECENT ACTIVITY</span><span>{filteredHistory.length.toString().padStart(2, "0")}</span>
           </div>
 
           <div className="aura-history-list">
             {filteredHistory.length > 0 ? (
               filteredHistory.map((item, index) => (
-                <button
-                  type="button"
-                  className="aura-history-item"
-                  key={item.id}
-                  onClick={() => selectHistory(item)}
-                >
-                  <span className="aura-history-index">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span className="aura-history-copy">
-                    <strong>{item.command}</strong>
-                    <small>{item.timestamp}</small>
-                  </span>
+                <button type="button" className="aura-history-item" key={item.id} onClick={() => selectHistory(item)}>
+                  <span className="aura-history-index">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="aura-history-copy"><strong>{item.command}</strong><small>{item.timestamp}</small></span>
                   <FaArrowRight className="aura-history-arrow" />
                 </button>
               ))
             ) : (
-              <div className="aura-empty-history">
-                <FaTerminal />
-                <strong>Archive empty</strong>
-                <p>Your commands will appear here after you use Aura.</p>
-              </div>
+              <div className="aura-empty-history"><FaTerminal /><strong>Archive empty</strong><p>Your commands will appear here after you use Aura.</p></div>
             )}
           </div>
 
           <div className="aura-sidebar-footer">
-            <div>
-              <span className="aura-live-dot" />
-              LOCAL SESSION
-            </div>
-            <button
-              type="button"
-              className="aura-clear-button"
-              onClick={clearHistory}
-              disabled={history.length === 0}
-              title="Clear session history"
-            >
-              <FaTrash /> CLEAR
-            </button>
+            <div><span className="aura-live-dot" /> LOCAL SESSION</div>
+            <button type="button" className="aura-clear-button" onClick={clearHistory} disabled={history.length === 0}><FaTrash /> CLEAR</button>
           </div>
         </aside>
 
-        {/* CENTER: NEURAL CORE */}
         <section className="aura-center">
           <div className="aura-center-topline">
-            <span>NEURAL INTERFACE</span>
-            <span className="aura-center-coordinates">CORE // 001</span>
+            <span>NEURAL INTERFACE</span><span className="aura-center-coordinates">CORE // 001</span>
           </div>
 
-          <div
-            className="aura-core-stage"
-            ref={centerPlaceholderRef}
-          >
-            <div
-              className="aura-core-content"
-              ref={centerContentRef}
-            >
-              <div
-                id="orbContainer"
-                className={`aura-orb ${isListening ? "listening-active" : "orb-glow"}`}
-              >
+          <div className="aura-core-stage" ref={centerPlaceholderRef}>
+            <div className="aura-core-content" ref={centerContentRef}>
+              <div id="orbContainer" className={`aura-orb ${isListening ? "listening-active" : "orb-glow"}`}>
                 <div className="aura-orb-grid" aria-hidden="true" />
                 <div className="aura-orb-ring aura-orb-ring-one" />
                 <div className="aura-orb-ring aura-orb-ring-two" />
                 <img src={auraLogo} alt="" className="aura-core-logo" />
-                <canvas
-                  ref={canvasRef}
-                  id="waveCanvas"
-                  aria-hidden="true"
-                />
+                <canvas ref={canvasRef} id="waveCanvas" aria-hidden="true" />
                 <span className="aura-orb-cross aura-orb-cross-one" />
                 <span className="aura-orb-cross aura-orb-cross-two" />
               </div>
 
               <div className="aura-greeting">
-                <span className="aura-eyebrow">
-                  {isListening ? "AUDIO INPUT ACTIVE" : "AWAITING INPUT"}
-                </span>
-                <h2>
-                  {isListening ? (
-                    <>I'm <span>listening.</span></>
-                  ) : (
-                    <>Enter the <span>unknown.</span></>
-                  )}
-                </h2>
+                <span className="aura-eyebrow">{isListening ? "AUDIO INPUT ACTIVE" : "AWAITING INPUT"}</span>
+                <h2>{isListening ? <>I'm <span>listening.</span></> : <>Enter the <span>unknown.</span></>}</h2>
                 <p id="transcriptText">{transcriptText}</p>
               </div>
 
@@ -1152,105 +814,43 @@ const AuraAssistant: React.FC = () => {
                 <span id="statusText">{statusText}</span>
               </div>
 
-              <button
-                type="button"
-                id="micBtn"
-                className={`aura-mic-button ${isListening ? "is-listening" : ""}`}
-                onClick={toggleMic}
-                aria-label={isListening ? "Stop listening" : "Start voice command"}
-                aria-pressed={isListening}
-              >
+              <button type="button" id="micBtn" className={`aura-mic-button ${isListening ? "is-listening" : ""}`} onClick={toggleMic}>
                 {isListening ? <FaStop /> : <FaMicrophone />}
                 <span>{isListening ? "END SESSION" : "INITIATE VOICE"}</span>
               </button>
 
-              <p className="aura-mic-hint">
-                {isListening
-                  ? "SPEAK CLEARLY · PRESS TO STOP"
-                  : "CLICK TO TRANSMIT YOUR COMMAND"}
-              </p>
+              <p className="aura-mic-hint">{isListening ? "SPEAK CLEARLY · PRESS TO STOP" : "CLICK TO TRANSMIT YOUR COMMAND"}</p>
             </div>
           </div>
 
-          {/* EMBEDDED YOUTUBE PLAYER */}
           {embeddedVideo && (
             <div className="aura-embed">
-              <div className="aura-embed-header">
-                <span className="aura-live-dot" />
-                <span>EMBEDDED PLAYER</span>
-                <button
-                  type="button"
-                  className="aura-embed-close"
-                  onClick={() => setEmbeddedVideo(null)}
-                >
-                  CLOSE
-                </button>
-              </div>
-              <div className="aura-embed-frame">
-                <iframe
-                  src={embeddedVideo}
-                  title="Aura Embedded Player"
-                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                  allowFullScreen
-                />
-              </div>
+              <div className="aura-embed-header"><span className="aura-live-dot" /><span>EMBEDDED PLAYER</span><button type="button" className="aura-embed-close" onClick={() => setEmbeddedVideo(null)}>CLOSE</button></div>
+              <div className="aura-embed-frame"><iframe src={embeddedVideo} title="Aura Embedded Player" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen /></div>
             </div>
           )}
         </section>
 
-        {/* RIGHT: LIVE OUTPUT */}
         <aside className="aura-panel aura-results">
           <div className="aura-panel-heading">
-            <div className="aura-section-icon violet">
-              <FaBolt />
-            </div>
-            <div>
-              <span className="aura-eyebrow">INTELLIGENCE / 02</span>
-              <h2>Command Output</h2>
-            </div>
+            <div className="aura-section-icon violet"><FaBolt /></div>
+            <div><span className="aura-eyebrow">INTELLIGENCE / 02</span><h2>Command Output</h2></div>
           </div>
 
           <div className="aura-result-title">
-            <span className="aura-eyebrow">IDENTIFIED SUBJECT</span>
-            <h3>{commandDetails.title}</h3>
-            <span className="aura-category-tag">
-              {commandDetails.category}
-            </span>
+            <span className="aura-eyebrow">IDENTIFIED SUBJECT</span><h3>{commandDetails.title}</h3><span className="aura-category-tag">{commandDetails.category}</span>
           </div>
 
           <div className="aura-result-metrics">
-            <div>
-              <span>RESULT STATUS</span>
-              <strong>{commandDetails.match}</strong>
-            </div>
-            <div>
-              <span>OUTPUT TYPE</span>
-              <strong>{commandDetails.type.toUpperCase()}</strong>
-            </div>
+            <div><span>RESULT STATUS</span><strong>{commandDetails.match}</strong></div>
+            <div><span>OUTPUT TYPE</span><strong>{commandDetails.type.toUpperCase()}</strong></div>
           </div>
 
-          <div className="aura-output-heading">
-            <span>RESPONSE STREAM</span>
-            <span className="aura-live-dot" />
-          </div>
+          <div className="aura-output-heading"><span>RESPONSE STREAM</span><span className="aura-live-dot" /></div>
+          <div className="aura-output-content">{renderResult()}</div>
 
-          <div className="aura-output-content">
-            {renderResult()}
-          </div>
-
-          <div className="aura-output-footer">
-            <FaBolt />
-            <span>AURA RESPONSE ENGINE</span>
-            <span>READY</span>
-          </div>
-
-          <div className="aura-command-tip">
-            <span className="aura-tip-symbol">i</span>
-            <p>
-              Speak a command to populate this panel with results from your
-              existing command processor.
-            </p>
-          </div>
+          <div className="aura-output-footer"><FaBolt /><span>AURA RESPONSE ENGINE</span><span>READY</span></div>
+          <div className="aura-command-tip"><span className="aura-tip-symbol">i</span><p>Speak a command to populate this panel with results from your existing command processor.</p></div>
         </aside>
       </main>
 
