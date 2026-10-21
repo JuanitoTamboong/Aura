@@ -59,6 +59,37 @@ type BootStage = "splash" | "welcome" | "ready";
 const STOP_WORDS = /\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/i;
 const WAIT_WORDS = /\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/i;
 
+// =========================================================
+// TYPEWRITER COMPONENT WITH MARKDOWN CLEANER
+// =========================================================
+const Typewriter = ({ text, speed = 15 }: { text: string, speed?: number }) => {
+  const [displayedText, setDisplayedText] = useState("");
+  
+  useEffect(() => {
+    setDisplayedText(""); // Reset when text changes
+    if (!text) return;
+
+    // CLEAN THE TEXT: Remove asterisks, hashes, and long dashes
+    const cleanedText = text
+      .replace(/\*\*/g, "")       // Remove bold asterisks
+      .replace(/\*/g, "")         // Remove italic asterisks
+      .replace(/^#+\s/gm, "")     // Remove markdown headers (#)
+      .replace(/---+/g, "")       // Remove horizontal lines
+      .replace(/^\s*-\s+/gm, "• "); // Turn markdown list dashes into bullet points
+
+    let i = 0;
+    const intervalId = setInterval(() => {
+      setDisplayedText((prev) => prev + cleanedText.charAt(i));
+      i++;
+      if (i >= cleanedText.length) clearInterval(intervalId);
+    }, speed);
+
+    return () => clearInterval(intervalId);
+  }, [text, speed]);
+
+  return <>{displayedText}</>;
+};
+
 const AuraAssistant: React.FC = () => {
   const [bootStage, setBootStage] = useState<BootStage>("splash");
 
@@ -730,7 +761,10 @@ const AuraAssistant: React.FC = () => {
           <span className="aura-live-dot" />
           RESPONSE DATA
         </div>
-        <p>{resultText || "No response data returned."}</p>
+        {/* 👇 TYPEWRITER COMPONENT IN USE HERE 👇 */}
+        <p>
+          <Typewriter text={resultText || "No response data returned."} speed={10} />
+        </p>
       </div>
     );
   };
