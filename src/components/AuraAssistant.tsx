@@ -371,7 +371,7 @@ const AuraAssistant: React.FC = () => {
   );
 
   // ---------------------------------------------------------
-  // SPEECH RECOGNITION (ANTI-LOOP FIX)
+  // SPEECH RECOGNITION (THE ULTIMATE FIX)
   // ---------------------------------------------------------
   const setupSpeechRecognition = useCallback(
     (targetWindow: Window = window) => {
@@ -394,7 +394,7 @@ const AuraAssistant: React.FC = () => {
       recognition.interimResults = true;
       recognition.lang = "en-US";
 
-      let lastCommandTime = 0; // Prevents mobile double-firing
+      let lastCommandText = ""; 
 
       recognition.onresult = (event: any) => {
         let interim = "";
@@ -417,14 +417,18 @@ const AuraAssistant: React.FC = () => {
           setTranscriptText(`"${interim}"`);
         }
 
-        // 4. Cooldown logic (1.5 seconds) to prevent the mobile mic from firing duplicates
-        const now = Date.now();
-        if (now - lastCommandTime > 1500) {
-          finalCommands.forEach((cmd) => {
-            lastCommandTime = now;
-            runCommand(cmd);
-          });
-        }
+        // Only process if it's a new sentence, and ignore tiny noises
+        finalCommands.forEach((cmd) => {
+          if (cmd !== lastCommandText && cmd.length > 1) {
+            lastCommandText = cmd; // Save it
+            runCommand(cmd);       // Run it
+            
+            // Clear memory after 3 seconds so you can say it again later
+            setTimeout(() => {
+              if (lastCommandText === cmd) lastCommandText = "";
+            }, 3000);
+          }
+        });
       };
 
       recognition.onerror = (event: any) => {
@@ -454,7 +458,6 @@ const AuraAssistant: React.FC = () => {
         }
 
         // 5. DO NOT restart the mic if Aura is currently speaking.
-        // The auraSpeak() function will restart it when she finishes.
         if (window.speechSynthesis.speaking) return;
 
         try {
