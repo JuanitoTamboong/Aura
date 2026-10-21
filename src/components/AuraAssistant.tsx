@@ -63,6 +63,8 @@ const STOP_WORDS = /\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|ab
 const WAIT_WORDS = /\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/i;
 const WAKE_WORDS = /\b(aur+a|aura|hey aura|okay aura|wake up|wake up aura|aura wake up|hey aur+a)\b/i;
 
+const HISTORY_STORAGE_KEY = "aura_history";
+
 const AuraAssistant: React.FC = () => {
   const [bootStage, setBootStage] = useState<BootStage>("splash");
 
@@ -73,7 +75,6 @@ const AuraAssistant: React.FC = () => {
   );
   const [commandDetails, setCommandDetails] =
     useState<CommandDetails>(INITIAL_DETAILS);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
@@ -106,6 +107,7 @@ const AuraAssistant: React.FC = () => {
   
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
+  // ★ MOVED UP: historyIdRef must be declared before `history` so we can seed it
   const historyIdRef = useRef(0);
   const centerContentRef = useRef<HTMLDivElement | null>(null);
   const centerPlaceholderRef = useRef<HTMLDivElement | null>(null);
@@ -123,6 +125,37 @@ const AuraAssistant: React.FC = () => {
   const micModeRef = useRef<MicMode>("off");
   const handsFreeRef = useRef(false);
   const wakeCooldownRef = useRef(false);
+
+  // ★ NEW: persist history across refreshes
+  const [history, setHistory] = useState<HistoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+
+      // Seed the ID counter so new entries never collide with restored ones
+      const maxId = parsed.reduce(
+        (max: number, item: HistoryItem) =>
+          typeof item?.id === "number" && item.id > max ? item.id : max,
+        0
+      );
+      historyIdRef.current = maxId;
+
+      return parsed;
+    } catch {
+      return [];
+    }
+  });
+
+  // ★ NEW: write history to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+    } catch (error) {
+      console.warn("Failed to persist Aura history:", error);
+    }
+  }, [history]);
 
   useEffect(() => {
     const profile = getUserProfile();
@@ -954,6 +987,16 @@ const AuraAssistant: React.FC = () => {
     setHistory([]);
     setSearchQuery("");
     clearConversation();
+
+    // ★ NEW: wipe persisted history so it doesn't come back after refresh
+    try {
+      localStorage.removeItem(HISTORY_STORAGE_KEY);
+    } catch (error) {
+      console.warn("Failed to clear Aura history:", error);
+    }
+
+    // Reset ID counter so numbering restarts cleanly
+    historyIdRef.current = 0;
   };
 
   const renderResult = () => {
@@ -1368,7 +1411,8 @@ const AuraAssistant: React.FC = () => {
       <footer className="aura-footer">
         <span>AURA AI <span className="aura-footer-divider">/</span> COMMAND CENTER</span>
         <span>NEURAL LINK <span className="aura-footer-online">● ACTIVE</span></span>
-        <span>SESSION HISTORY IS NOT PERSISTED</span>
+        {/* ★ UPDATED: history now persists in localStorage */}
+        <span>COMMAND ARCHIVE PERSISTS LOCALLY</span>
       </footer>
     </div>
   );
