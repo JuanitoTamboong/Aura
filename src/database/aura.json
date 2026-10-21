@@ -59,6 +59,12 @@
       "speak": "Why did the computer go to the doctor? Because it had a virus!",
       "title": "Joke",
       "category": "Fun"
-    }
+    },
+    {
+    "command": "who is the girlfriend of Juanito Tamboong",
+      "speak": "Its Rizalyn Uy. She is the girlfriend of Juanito Tamboong.",
+      "title": "Personal Info",
+      "category": "System Info"
+    }       
   ]
 }
