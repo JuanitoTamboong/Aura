@@ -161,6 +161,7 @@ const AuraAssistant: React.FC = () => {
     }
   }, [history]);
 
+  // ★ FIXED: Active connection test with strict timeout for captive portals (Piso Wifi)
   useEffect(() => {
     let interval: any;
 
@@ -171,13 +172,20 @@ const AuraAssistant: React.FC = () => {
       }
       
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout
+
         await fetch("https://www.google.com/favicon.ico", {
           mode: "no-cors",
           cache: "no-store",
-          method: "HEAD"
+          method: "HEAD",
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         setIsOnline(true);
       } catch {
+        // If the fetch fails OR times out (like on Piso Wifi), mark as offline
         setIsOnline(false);
       }
     };
