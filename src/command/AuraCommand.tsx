@@ -370,7 +370,7 @@ export const processCommand = async ({
         `If the user asks for a quiz, story, list, or code, YOU MUST GENERATE IT DIRECTLY. Do not refuse.\n\n` +
         `User: ${enhancedPrompt}\nAura:`;
     }
-
+    
     const reply = await askAI(promptWithContext);
     let safeReply = (reply && reply.trim()) ? reply.trim() : "I couldn't find information on that topic.";
 
