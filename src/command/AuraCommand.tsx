@@ -49,14 +49,13 @@ export const processCommand = async ({
 
   const lowerCmd = originalCommand.toLowerCase().trim();
 
-  // 0. INSTANT ABSOLUTE STOP — ends session, mic OFF
+  // 0. INSTANT ABSOLUTE STOP
   if (/\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/.test(lowerCmd)) {
-    // Cancel speech FIRST so no further utterance sneaks in
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
     
-    stopMic(); // Turns off the listening state and closes the session
+    stopMic(); 
     
     clearConversation();
     setEmbeddedVideo?.(null);
@@ -70,18 +69,15 @@ export const processCommand = async ({
       data: "System paused. Click INITIATE VOICE to start a new session." 
     });
     
-    // Stay silent — do NOT call auraSpeak
     return "Stopped.";
   }
 
-  // 0.25 WAIT / HOLD ON — silence but KEEP LISTENING
+  // 0.25 WAIT / HOLD ON
   if (/\b(wait|hold on|hold up|hold it|pause|one moment|one sec|give me a sec|give me a second|just a moment|stand by|standby)\b/.test(lowerCmd)) {
-    // Cut current speech only
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
     
-    // Do NOT call stopMic() — mic stays alive
     setCommandDetails({
       title: "Waiting",
       category: "Standing By",
@@ -92,7 +88,6 @@ export const processCommand = async ({
     setTranscriptText(`Waiting...`);
     setStatusText("LISTENING");
     
-    // Stay silent — do NOT call auraSpeak
     return "";
   }
 
@@ -104,10 +99,7 @@ export const processCommand = async ({
     if (lastAssistantTurn) {
       setTranscriptText(`Continuing...`);
       setStatusText("SPEAKING");
-      
-      // Repeat the last thing Aura said
       await Promise.resolve(auraSpeak(lastAssistantTurn.text));
-      
       setStatusText("SYSTEM ONLINE");
       return lastAssistantTurn.text;
     } else {
@@ -116,6 +108,25 @@ export const processCommand = async ({
       await Promise.resolve(auraSpeak(msg));
       return msg;
     }
+  }
+
+  // 0.75 CLOSE MEDIA PLAYER (INSTANT)
+  if (/\b(close|hide|exit|dismiss)\b/.test(lowerCmd) && /\b(video|player|it|youtube|that)\b/.test(lowerCmd)) {
+    setEmbeddedVideo?.(null);
+    const msg = "Closing the video player.";
+    
+    setTranscriptText(`"${originalCommand}"`);
+    setStatusText("SYSTEM ONLINE");
+    setCommandDetails({
+      title: "Player Closed", 
+      category: "System Control", 
+      match: "100%", 
+      type: "text", 
+      data: "Embedded player hidden.",
+    });
+
+    await Promise.resolve(auraSpeak(msg));
+    return msg;
   }
 
   setStatusText("PROCESSING COMMAND");
@@ -186,15 +197,7 @@ export const processCommand = async ({
       }
     }
 
-    // CLOSE EMBEDDED PLAYER
-    if (/\b(close|hide|exit|dismiss)\b/.test(normalized) && /\b(video|player|it|youtube|that)\b/.test(normalized)) {
-      setEmbeddedVideo?.(null);
-      return await respond("Closing the video player.", {
-        title: "Player Closed", category: "System Control", data: "Embedded player hidden.",
-      });
-    }
-
-    // 1. CHECK DATABASE (KEYWORD MATCHING)
+    // 1. CHECK DATABASE
     if (auraDatabase?.commands) {
       const isSystemCommand = /\b(search|google|youtube|play|open|facebook|gmail|netflix|github)\b/i.test(normalized);
 
@@ -243,8 +246,10 @@ export const processCommand = async ({
       return await respond(`Today is ${dateString}.`, { title: "Today's Date", category: "System Info", data: `Today is ${dateString}.` });
     }
 
-    // 4. YOUTUBE
-    if (/\b(youtube|play|music|song|video)\b/.test(normalized)) {
+    // 4. YOUTUBE (UPDATED: Only trigger if they use action words)
+    const isYouTubeCommand = /\b(play|open|launch|watch|search)\b/i.test(normalized);
+    
+    if (isYouTubeCommand && /\b(youtube|music|song|video|it|that|this)\b/.test(normalized)) {
       const isJustOpenYouTube = /^(go\s*to\s+youtube|open\s+youtube|youtube|launch\s+youtube|show\s+(me\s+)?youtube)$/i.test(normalized);
       const isContextualFollowUp = /^(it|that|this|the\s+video|the\s+song|that\s+song|that\s+video|it\s+play\s+it|it\s+it|play\s+it\s+play\s+it|play\s+it\s+it|play\s+it)$/i.test(normalized.trim());
 
