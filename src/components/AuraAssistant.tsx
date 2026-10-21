@@ -297,17 +297,12 @@ const AuraAssistant: React.FC = () => {
 
       // 2. WHEN AURA FINISHES SPEAKING, TURN THE MIC BACK ON
       utterance.onend = () => {
-        // Only restart if you haven't manually clicked "END SESSION" or said "Stop"
+        // Only restart if you haven't manually clicked "END SESSION"
         if (isListeningRef.current) {
-          // Wait 1.5 seconds to ensure speaker echo is completely gone
-          setTimeout(() => {
-            if (isListeningRef.current && !window.speechSynthesis.speaking) {
-              try {
-                recognitionRef.current?.start();
-                setStatusText("LISTENING");
-              } catch {}
-            }
-          }, 1500);
+          try {
+            recognitionRef.current?.start();
+            setStatusText("LISTENING");
+          } catch {}
         }
       };
 
