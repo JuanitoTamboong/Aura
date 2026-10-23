@@ -18,6 +18,7 @@ import {
   FaTrash,
   FaXmark,
   FaPowerOff,
+  FaBell,
 } from "react-icons/fa6";
 
 import { FaRegMoon } from "react-icons/fa";
@@ -30,6 +31,15 @@ import auraLogo from "../assets/images/Aura-Logo.png";
 import auraDatabase from "../database/aura.json";
 import { processCommand } from "../command/AuraCommand";
 import { clearConversation, getUserProfile } from "../command/AuraConversation";
+import {
+  initReminders,
+  getReminders,
+  cancelReminder,
+  type Reminder,
+} from "../command/AuraReminders";
+
+// ★ Imported your custom sound here
+import alarmSound from "../assets/sound/alarm-clock.mp3";
 
 import SplashScreen from "./SplashScreen";
 import WelcomeScreen from "./WelcomeScreen";
@@ -106,6 +116,8 @@ const AuraAssistant: React.FC = () => {
     return typeof navigator !== "undefined" ? navigator.onLine : true;
   });
 
+  const [pendingAlarms, setPendingAlarms] = useState<Reminder[]>([]);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const modalCanvasRef = useRef<HTMLCanvasElement | null>(null); 
   
@@ -160,6 +172,36 @@ const AuraAssistant: React.FC = () => {
       console.warn("Failed to persist Aura history:", error);
     }
   }, [history]);
+
+  // ★ Re-arm alarms + refresh UI list
+  useEffect(() => {
+    if (bootStage !== "ready") return;
+
+    initReminders();
+
+    const refresh = () => {
+      const all = getReminders().filter((r) => r.active);
+      setPendingAlarms(all.sort((a, b) => a.time - b.time));
+    };
+
+    refresh();
+    const interval = setInterval(refresh, 5000);
+    return () => clearInterval(interval);
+  }, [bootStage]);
+
+  // ★ Cancel one alarm
+  const handleCancelAlarm = (id: string) => {
+    cancelReminder(id);
+    setPendingAlarms((prev) => prev.filter((r) => r.id !== id));
+    setStatusText("ALARM CANCELLED");
+    setTimeout(
+      () =>
+        setStatusText((s) =>
+          s === "ALARM CANCELLED" ? "SYSTEM ONLINE" : s
+        ),
+      1500
+    );
+  };
 
   // ★ FIXED: Active connection test with strict timeout for captive portals (Piso Wifi)
   useEffect(() => {
@@ -464,6 +506,42 @@ const AuraAssistant: React.FC = () => {
     }, 50);
   }, [selectedVoiceName]);
 
+  // ★ Listen for alarms fired by Electron's Main Process
+  // (Moved down here so it's below auraSpeak)
+  useEffect(() => {
+    if (bootStage !== "ready") return;
+    
+    if ((window as any).electronAPI?.onPlayAlarm) {
+      (window as any).electronAPI.onPlayAlarm((data: { message: string }) => {
+        // 1. Play sound
+        try {
+          const audio = new Audio(alarmSound);
+          audio.loop = true;
+          audio.play().catch(() => {});
+          setTimeout(() => {
+            audio.pause();
+            audio.currentTime = 0;
+          }, 30000);
+        } catch {}
+
+        // 2. Speak the reminder
+        auraSpeak(`Reminder: ${data.message}`);
+
+        // 3. Update UI
+        setStatusText("ALARM RINGING");
+        setTranscriptText(`⏰ ${data.message}`);
+        setCommandDetails({
+          title: "Alarm Ringing",
+          category: "Time Management",
+          match: "100%",
+          type: "text",
+          data: `**⏰ Alarm:** ${data.message}`,
+        });
+        setShowResponseModal(true);
+      });
+    }
+  }, [bootStage, auraSpeak]);
+
   const prevVoiceRef = useRef<string>("");
   useEffect(() => {
     if (selectedVoiceName && prevVoiceRef.current && prevVoiceRef.current !== selectedVoiceName) {
@@ -605,6 +683,10 @@ const AuraAssistant: React.FC = () => {
           stopMic,
         }).then(() => {
           setUserProfile(getUserProfile());
+
+          // ★ Refresh alarms after command (a new one may have been scheduled)
+          const all = getReminders().filter((r) => r.active);
+          setPendingAlarms(all.sort((a, b) => a.time - b.time));
         });
         
         if (!isMobile) {
@@ -1366,6 +1448,66 @@ const AuraAssistant: React.FC = () => {
             )}
           </div>
 
+          {/* ★ NEW: Pending alarms section */}
+          <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '5px', border: '1px solid var(--aura-border)' }}>
+            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--aura-muted)', marginBottom: '5px', fontFamily: 'monospace' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <FaBell /> PENDING ALARMS:
+              </span>
+              <span style={{ color: 'var(--aura-violet)' }}>
+                {pendingAlarms.length.toString().padStart(2, '0')}
+              </span>
+            </label>
+
+            {pendingAlarms.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '10px', color: 'var(--aura-subtle)', fontFamily: 'monospace', fontStyle: 'italic' }}>
+                No alarms scheduled.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {pendingAlarms.map((alarm) => (
+                  <div
+                    key={alarm.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      fontSize: '11px',
+                      color: 'var(--aura-text)',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <strong style={{ color: 'var(--aura-violet)' }}>
+                        {new Date(alarm.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </strong>
+                      {' — '}
+                      {alarm.message}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCancelAlarm(alarm.id)}
+                      title="Cancel this alarm"
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid rgba(248, 113, 113, 0.4)',
+                        color: '#f87171',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        padding: '2px 6px',
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={{ fontSize: '11px', color: 'var(--aura-muted)', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', borderTop: '1px solid var(--aura-border)', paddingTop: '10px' }}>
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
@@ -1374,6 +1516,7 @@ const AuraAssistant: React.FC = () => {
             {history.length > 0 && <p style={{ color: 'var(--aura-violet)' }}>• Last command: "{history[0].command}"</p>}
             {embeddedVideo && <p style={{ color: 'var(--aura-cyan)' }}>• Embedded player active.</p>}
             {pipOpen && <p style={{ color: 'var(--aura-cyan)' }}>• Floating Aura window active.</p>}
+            {pendingAlarms.length > 0 && <p style={{ color: 'var(--aura-cyan)' }}>• {pendingAlarms.length} alarm{pendingAlarms.length === 1 ? '' : 's'} scheduled.</p>}
           </div>
           <button type="button" onClick={() => setShowLogs(false)} style={{ marginTop: '15px', width: '100%' }}>Close Settings</button>
         </div>

@@ -11,6 +11,7 @@ import {
   saveUserProfile,
   clearUserMemory,
 } from './AuraConversation';
+import { setReminder } from './AuraReminders'; // ★ NEW IMPORT
 
 interface CommandDetails {
   title: string;
@@ -109,6 +110,32 @@ export const processCommand = async ({
     setCommandDetails({ title: "Player Closed", category: "System Control", match: "100%", type: "text", data: "Embedded player hidden." });
     await Promise.resolve(auraSpeak(msg));
     return msg;
+  }
+
+  // ★★★ 0.9 ALARMS & REMINDERS ★★★
+  if (/\b(set\s+alarm|alarm|remind\s+me|reminder|wake\s+me|set\s+timer|timer)\b/i.test(lowerCmd)) {
+    setStatusText("SETTING ALARM...");
+
+    const result = setReminder(originalCommand);
+
+    setCommandDetails({
+      title: result.success ? "Alarm Scheduled" : "Alarm Error",
+      category: "Time Management",
+      match: result.success ? "100%" : "0%",
+      type: "text",
+      data: result.message,
+    });
+
+    setTranscriptText(result.message);
+    setStatusText(result.success ? "ALARM SET" : "SYSTEM ONLINE");
+
+    if (result.success) {
+      addUserTurn(originalCommand);
+      addAssistantTurn(result.message);
+    }
+
+    await Promise.resolve(auraSpeak(result.message));
+    return result.message;
   }
 
   setStatusText("PROCESSING COMMAND");

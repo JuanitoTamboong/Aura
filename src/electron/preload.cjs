@@ -1,26 +1,14 @@
+// electron/preload.cjs
+const { contextBridge, ipcRenderer } = require('electron');
 
-const { contextBridge } = require("electron");
+contextBridge.exposeInMainWorld('electronAPI', {
+  setAlarm: (id, time, message) =>
+    ipcRenderer.send('set-alarm', { id, time, message }),
 
-contextBridge.exposeInMainWorld("electronAPI", {
-  showNotification: (title, body) => {
-    if (typeof title !== "string" || typeof body !== "string") {
-      return false;
-    }
+  cancelAlarm: (id) =>
+    ipcRenderer.send('cancel-alarm', id),
 
-    if (!("Notification" in window)) {
-      return false;
-    }
-
-    if (Notification.permission === "granted") {
-      new Notification(title, { body });
-      return true;
-    }
-
-    return false;
+  onPlayAlarm: (cb) => {
+    ipcRenderer.on('play-alarm', (_event, data) => cb(data));
   },
-
-  getSystemInfo: () => ({
-    platform: process.platform,
-    arch: process.arch,
-  }),
 });
