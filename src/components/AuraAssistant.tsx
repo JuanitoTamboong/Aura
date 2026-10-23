@@ -35,10 +35,11 @@ import {
   initReminders,
   getReminders,
   cancelReminder,
+  stopAlarmSound,
+  cancelAllAlarms,
   type Reminder,
 } from "../command/AuraReminders";
 
-// ★ Imported your custom sound here
 import alarmSound from "../assets/sound/alarm-clock.mp3";
 
 import SplashScreen from "./SplashScreen";
@@ -117,6 +118,10 @@ const AuraAssistant: React.FC = () => {
   });
 
   const [pendingAlarms, setPendingAlarms] = useState<Reminder[]>([]);
+  
+  // ★ NEW: Track if the alarm is ringing
+  const [isAlarmRinging, setIsAlarmRinging] = useState(false);
+  const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const modalCanvasRef = useRef<HTMLCanvasElement | null>(null); 
@@ -203,7 +208,60 @@ const AuraAssistant: React.FC = () => {
     );
   };
 
-  // ★ FIXED: Active connection test with strict timeout for captive portals (Piso Wifi)
+  // ★ NEW: Handle stopping the alarm manually via button
+  const handleStopRinging = () => {
+    stopAlarmSound();
+    cancelAllAlarms();
+    
+    if (alarmAudioRef.current) {
+      try {
+        alarmAudioRef.current.pause();
+        alarmAudioRef.current.currentTime = 0;
+      } catch {}
+      alarmAudioRef.current = null;
+    }
+
+    try { window.speechSynthesis.cancel(); } catch {}
+
+    setIsAlarmRinging(false);
+    setShowResponseModal(false);
+    setStatusText("SYSTEM ONLINE");
+    setTranscriptText("Alarm stopped. Standing by.");
+  };
+
+  // ★ NEW: Listen for voice command "stop" while ringing
+  useEffect(() => {
+    if (!isAlarmRinging) return;
+
+    let stopRecognition: any = null;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      stopRecognition = new SpeechRecognition();
+      stopRecognition.continuous = true;
+      stopRecognition.interimResults = true;
+      stopRecognition.lang = "en-US";
+
+      stopRecognition.onresult = (event: any) => {
+        const text = event.results[event.results.length - 1][0].transcript.toLowerCase();
+        
+        if (/\b(stop|quiet|shut up|cancel|enough)\b/i.test(text)) {
+          handleStopRinging();
+          try { stopRecognition.stop(); } catch {}
+        }
+      };
+
+      try { stopRecognition.start(); } catch (e) {}
+    }
+
+    return () => {
+      if (stopRecognition) {
+        try { stopRecognition.abort(); } catch {}
+      }
+    };
+  }, [isAlarmRinging]);
+
+  // ★ FIXED: Active connection test
   useEffect(() => {
     let interval: any;
 
@@ -215,7 +273,7 @@ const AuraAssistant: React.FC = () => {
       
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3-second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
 
         await fetch("https://www.google.com/favicon.ico", {
           mode: "no-cors",
@@ -227,7 +285,6 @@ const AuraAssistant: React.FC = () => {
         clearTimeout(timeoutId);
         setIsOnline(true);
       } catch {
-        // If the fetch fails OR times out (like on Piso Wifi), mark as offline
         setIsOnline(false);
       }
     };
@@ -507,29 +564,24 @@ const AuraAssistant: React.FC = () => {
   }, [selectedVoiceName]);
 
   // ★ Listen for alarms fired by Electron's Main Process
-  // (Moved down here so it's below auraSpeak)
   useEffect(() => {
     if (bootStage !== "ready") return;
     
     if ((window as any).electronAPI?.onPlayAlarm) {
       (window as any).electronAPI.onPlayAlarm((data: { message: string }) => {
-        // 1. Play sound
         try {
           const audio = new Audio(alarmSound);
           audio.loop = true;
+          
+          alarmAudioRef.current = audio;
           audio.play().catch(() => {});
-          setTimeout(() => {
-            audio.pause();
-            audio.currentTime = 0;
-          }, 30000);
         } catch {}
 
-        // 2. Speak the reminder
         auraSpeak(`Reminder: ${data.message}`);
-
-        // 3. Update UI
         setStatusText("ALARM RINGING");
         setTranscriptText(`⏰ ${data.message}`);
+        setIsAlarmRinging(true);
+
         setCommandDetails({
           title: "Alarm Ringing",
           category: "Time Management",
@@ -641,8 +693,6 @@ const AuraAssistant: React.FC = () => {
       if (!cleaned || cleaned.length < 2) return;
 
       if (!isOnline) {
-        console.warn("[Aura] Command blocked — offline:", cleaned);
-
         setStatusText("OFFLINE");
         setTranscriptText("No internet connection. Try again when you're back online.");
         setCommandDetails({
@@ -660,8 +710,6 @@ const AuraAssistant: React.FC = () => {
         auraSpeak("I can't process that right now. I don't have an internet connection.");
         return;
       }
-
-      console.log("[Aura] Processing command:", cleaned);
 
       addHistory(cleaned);
       setTranscriptText(`"${cleaned}"`);
@@ -684,7 +732,6 @@ const AuraAssistant: React.FC = () => {
         }).then(() => {
           setUserProfile(getUserProfile());
 
-          // ★ Refresh alarms after command (a new one may have been scheduled)
           const all = getReminders().filter((r) => r.active);
           setPendingAlarms(all.sort((a, b) => a.time - b.time));
         });
@@ -696,7 +743,6 @@ const AuraAssistant: React.FC = () => {
         }
 
       } catch (error) {
-        console.error("Aura command failed:", error);
         setStatusText("COMMAND ERROR");
         setTranscriptText("Unable to process this command. Please try again.");
       }
@@ -912,7 +958,6 @@ const AuraAssistant: React.FC = () => {
       enterStandbyMode();
       auraSpeak("Hands free mode active. Say Aura, wake up.");
     } catch (err) {
-      console.error("Hands-free start failed:", err);
       setStatusText("MIC UNAVAILABLE");
     }
   }, [setupSpeechRecognition, enterStandbyMode, auraSpeak]);
@@ -957,7 +1002,6 @@ const AuraAssistant: React.FC = () => {
       setStatusText("LISTENING");
       setTranscriptText("Listening for your command...");
     } catch (error) {
-      console.error("Could not start voice recognition:", error);
       setStatusText("MICROPHONE UNAVAILABLE");
     }
   }, [setupSpeechRecognition, enterActiveMode, exitHandsFree]);
@@ -1376,6 +1420,24 @@ const AuraAssistant: React.FC = () => {
         </div>
 
         <div className="aura-header-actions">
+          {/* ★ NEW: Show STOP button only when ringing */}
+          {isAlarmRinging && (
+            <button
+              type="button"
+              className="aura-icon-button"
+              title="Stop Alarm"
+              onClick={handleStopRinging}
+              style={{
+                backgroundColor: "#ef4444",
+                color: "white",
+                border: "1px solid #dc2626",
+                animation: "pulse 1s infinite" 
+              }}
+            >
+              <FaStop />
+            </button>
+          )}
+
           <button type="button" className="aura-icon-button" title="System Logs" onClick={() => setShowLogs((value) => !value)}><FaTerminal /></button>
           <button
             type="button"

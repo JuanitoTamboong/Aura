@@ -233,13 +233,8 @@ export const scheduleAlarm = (reminder: Reminder) => {
 function triggerAlarm(reminder: Reminder) {
   activeTimeouts.delete(reminder.id);
 
-  if (activeAudio) {
-    try {
-      activeAudio.pause();
-      activeAudio.currentTime = 0;
-    } catch {}
-    activeAudio = null;
-  }
+  // ★ Use stopAlarmSound() to clear previous audio cleanly
+  stopAlarmSound();
 
   if ("Notification" in window && Notification.permission === "granted") {
     try {
@@ -352,8 +347,28 @@ export const cancelReminder = (id: string) => {
   removeReminder(id);
 };
 
-export const cancelAllReminders = () => {
+// ★ NEW: Stops the audio and the speaking voice
+export const stopAlarmSound = () => {
+  if (activeAudio) {
+    try {
+      activeAudio.pause();
+      activeAudio.currentTime = 0;
+    } catch {}
+    activeAudio = null;
+  }
+
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
+};
+
+// ★ NEW: Cancels all active timers and clears the alarm list
+export const cancelAllAlarms = () => {
   activeTimeouts.forEach((t) => clearTimeout(t));
   activeTimeouts.clear();
-  saveReminders([]);
+  
+  const reminders = getReminders().map((r) => ({ ...r, active: false }));
+  saveReminders(reminders);
+  
+  stopAlarmSound();
 };
