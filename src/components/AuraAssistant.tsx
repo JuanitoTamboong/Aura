@@ -118,10 +118,13 @@ const AuraAssistant: React.FC = () => {
   });
 
   const [pendingAlarms, setPendingAlarms] = useState<Reminder[]>([]);
-  
-  // ★ NEW: Track if the alarm is ringing
   const [isAlarmRinging, setIsAlarmRinging] = useState(false);
+  
+  // ★ NEW: Voice Engine Status ("premium" = ElevenLabs, "fallback" = Browser)
+  const [voiceEngine, setVoiceEngine] = useState<"premium" | "fallback" | "loading">("premium");
+
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioPlaybackRef = useRef<HTMLAudioElement | null>(null); // ★ For ElevenLabs
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const modalCanvasRef = useRef<HTMLCanvasElement | null>(null); 
@@ -208,7 +211,7 @@ const AuraAssistant: React.FC = () => {
     );
   };
 
-  // ★ NEW: Handle stopping the alarm manually via button
+  // ★ Handle stopping the alarm manually via button
   const handleStopRinging = () => {
     stopAlarmSound();
     cancelAllAlarms();
@@ -221,6 +224,14 @@ const AuraAssistant: React.FC = () => {
       alarmAudioRef.current = null;
     }
 
+    if (audioPlaybackRef.current) {
+      try {
+        audioPlaybackRef.current.pause();
+        audioPlaybackRef.current.currentTime = 0;
+      } catch {}
+      audioPlaybackRef.current = null;
+    }
+
     try { window.speechSynthesis.cancel(); } catch {}
 
     setIsAlarmRinging(false);
@@ -229,7 +240,7 @@ const AuraAssistant: React.FC = () => {
     setTranscriptText("Alarm stopped. Standing by.");
   };
 
-  // ★ NEW: Listen for voice command "stop" while ringing
+  // ★ Listen for voice command "stop" while ringing
   useEffect(() => {
     if (!isAlarmRinging) return;
 
@@ -347,8 +358,16 @@ const AuraAssistant: React.FC = () => {
 
   useEffect(() => {
     const loadVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      setAvailableVoices(voices);
+      const allVoices = window.speechSynthesis.getVoices();
+      
+      // ★ FILTER: Only allow David, Mark, and Zira
+      const filteredVoices = allVoices.filter(v => 
+        v.name.includes("David") || 
+        v.name.includes("Mark") || 
+        v.name.includes("Zira")
+      );
+
+      setAvailableVoices(filteredVoices);
 
       const savedVoice = localStorage.getItem("aura_selected_voice");
       
@@ -356,12 +375,9 @@ const AuraAssistant: React.FC = () => {
         if (selectedVoiceName !== savedVoice) {
           setSelectedVoiceName(savedVoice);
         }
-      } else if (!selectedVoiceName && voices.length > 0) {
-        const defaultVoice = voices.find(v => v.name.includes("David")) ||
-                             voices.find(v => v.lang.includes("en"));
-        if (defaultVoice) {
-          setSelectedVoiceName(defaultVoice.name);
-        }
+      } else if (!selectedVoiceName && filteredVoices.length > 0) {
+        // Default to the first one (David) if nothing is saved
+        setSelectedVoiceName(filteredVoices[0].name);
       }
     };
 
@@ -529,38 +545,117 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation, isMobile]);
 
-  const auraSpeak = useCallback((text: string) => {
+  // ★ PREMIUM TTS: ElevenLabs with Fallback
+  const auraSpeak = useCallback(async (text: string) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
+    // 1. Stop any currently playing audio
     window.speechSynthesis.cancel();
+    if (audioPlaybackRef.current) {
+      try {
+        audioPlaybackRef.current.pause();
+        audioPlaybackRef.current.currentTime = 0;
+      } catch {}
+      audioPlaybackRef.current = null;
+    }
+
     ignoreMicRef.current = true;
+    setVoiceEngine("loading");
 
-    const warmUp = new SpeechSynthesisUtterance(" ");
-    warmUp.volume = 0;
-    window.speechSynthesis.speak(warmUp);
+    try {
+      const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+      const voiceId = import.meta.env.VITE_ELEVENLABS_VOICE_ID;
 
-    setTimeout(() => {
+      if (!apiKey || !voiceId) {
+        throw new Error("Missing ElevenLabs API Key or Voice ID");
+      }
+
+      setStatusText("SPEAKING");
+
+      // 2. Fetch the audio from ElevenLabs
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+        {
+          method: "POST",
+          headers: {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            text: text,
+            // Use the highest quality model to capture the exact natural tone of your custom voice
+            model_id: "eleven_multilingual_v2", 
+            voice_settings: {
+              // Lower stability to add natural human emotion, breathing, and pacing
+              stability: 0.35, 
+              similarity_boost: 0.75,
+              style: 0.0,            // Keeps it from sounding overly dramatic
+              use_speaker_boost: true // Enhances clarity
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`ElevenLabs API failed with status: ${response.status}`);
+      }
+
+      // 3. Convert the response to an audio blob and play it
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      
+      audioPlaybackRef.current = audio;
+      setVoiceEngine("premium");
+
+      audio.onended = () => {
+        ignoreMicRef.current = false;
+        URL.revokeObjectURL(audioUrl); // Clean up memory
+        if (isListeningRef.current) {
+          setStatusText("LISTENING");
+        } else {
+          setStatusText("SYSTEM ONLINE");
+        }
+      };
+
+      audio.onerror = () => {
+        ignoreMicRef.current = false;
+        setStatusText("AUDIO ERROR");
+      };
+
+      await audio.play();
+
+    } catch (error) {
+      console.warn("ElevenLabs TTS failed, falling back to browser TTS:", error);
+      
+      // FALLBACK: Built-in Browser TTS
+      setVoiceEngine("fallback");
+      
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.pitch = 0.6;
-      utterance.rate = 0.85;
+      utterance.pitch = 0.85; // Slightly lower pitch for a male AI
+      utterance.rate = 0.95;  
 
       const voices = window.speechSynthesis.getVoices();
-      const chosenVoice = voices.find(v => v.name === selectedVoiceName);
+      // Look for a natural male voice
+      const chosenVoice = voices.find(v => v.name === selectedVoiceName) || voices.find(v => v.name.includes("David") || v.name.includes("Mark"));
       if (chosenVoice) utterance.voice = chosenVoice;
 
       utterance.onend = () => {
-        ignoreMicRef.current = false; 
+        ignoreMicRef.current = false;
         if (isListeningRef.current) {
-          setStatusText((prev) => (prev === "SPEAKING" ? "LISTENING" : prev));
+          setStatusText("LISTENING");
+        } else {
+          setStatusText("SYSTEM ONLINE");
         }
       };
 
       utterance.onerror = () => {
-        ignoreMicRef.current = false; 
+        ignoreMicRef.current = false;
       };
 
       window.speechSynthesis.speak(utterance);
-    }, 50);
+    }
   }, [selectedVoiceName]);
 
   // ★ Listen for alarms fired by Electron's Main Process
@@ -1456,8 +1551,31 @@ const AuraAssistant: React.FC = () => {
         <div className="aura-notification">
           <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--aura-violet)', fontSize: '11px' }}><FaTerminal /> SYSTEM SETTINGS & LOGS</strong>
           
+          {/* ★ NEW: Voice Engine Status */}
+          <div style={{ 
+            marginTop: '15px', marginBottom: '15px', padding: '10px', 
+            background: voiceEngine === 'premium' ? 'rgba(34, 211, 238, 0.1)' : voiceEngine === 'fallback' ? 'rgba(248, 113, 113, 0.1)' : 'rgba(139, 92, 246, 0.1)', 
+            borderRadius: '5px', 
+            border: `1px solid ${voiceEngine === 'premium' ? 'rgba(34, 211, 238, 0.4)' : voiceEngine === 'fallback' ? 'rgba(248, 113, 113, 0.4)' : 'var(--aura-border)'}` 
+          }}>
+            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--aura-muted)', fontFamily: 'monospace' }}>
+              <span>VOICE ENGINE:</span>
+              <span style={{ 
+                color: voiceEngine === 'premium' ? 'var(--aura-cyan)' : voiceEngine === 'fallback' ? '#f87171' : 'var(--aura-violet)',
+                fontWeight: 'bold'
+              }}>
+                {voiceEngine === 'premium' ? "ELEVENLABS (PREMIUM)" : voiceEngine === 'fallback' ? "BROWSER (FALLBACK)" : "LOADING..."}
+              </span>
+            </label>
+            {voiceEngine === 'fallback' && (
+              <p style={{ margin: '5px 0 0', fontSize: '10px', color: '#f87171', fontFamily: 'monospace' }}>
+                ⚠️ Out of credits or API error. Using built-in browser voice.
+              </p>
+            )}
+          </div>
+
           <div style={{ marginTop: '15px', marginBottom: '15px' }}>
-            <label style={{ display: 'block', fontSize: '10px', color: 'var(--aura-muted)', marginBottom: '5px', fontFamily: 'monospace' }}>SELECT AURA'S VOICE:</label>
+            <label style={{ display: 'block', fontSize: '10px', color: 'var(--aura-muted)', marginBottom: '5px', fontFamily: 'monospace' }}>FALLBACK VOICE (Browser):</label>
             <select 
               value={selectedVoiceName} 
               onChange={(e) => setSelectedVoiceName(e.target.value)} 

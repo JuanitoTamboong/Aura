@@ -17,38 +17,91 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
 
   const hasPlayedRef = useRef(false);
 
-  const playWelcomeVoice = () => {
+  // ★ UPDATED: Use ElevenLabs Premium Voice with Browser Fallback
+  const playWelcomeVoice = async () => {
     if (hasPlayedRef.current) return;
-    if (!("speechSynthesis" in window)) return;
-
     hasPlayedRef.current = true;
+
+    // Stop any existing audio
     window.speechSynthesis.cancel();
+    
+    const text = "Welcome back, Sir.";
+    const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+    const voiceId = import.meta.env.VITE_ELEVENLABS_VOICE_ID;
 
-    const utterance = new SpeechSynthesisUtterance("Welcome back, Sir.");
-    utterance.pitch = 0.6;
-    utterance.rate = 0.85;
+    // Try ElevenLabs First
+    if (apiKey && voiceId) {
+      try {
+        const response = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+          {
+            method: "POST",
+            headers: {
+              "Accept": "audio/mpeg",
+              "Content-Type": "application/json",
+              "xi-api-key": apiKey,
+            },
+            body: JSON.stringify({
+              text: text,
+              model_id: "eleven_multilingual_v2", 
+              voice_settings: {
+                stability: 0.35,
+                similarity_boost: 0.75,
+                style: 0.0,
+                use_speaker_boost: true
+              },
+            }),
+          }
+        );
 
-    const savedVoiceName = localStorage.getItem("aura_selected_voice");
+        if (!response.ok) {
+          throw new Error(`ElevenLabs API failed with status: ${response.status}`);
+        }
 
-    const setVoiceAndSpeak = () => {
-      const voices = window.speechSynthesis.getVoices();
-      
-      const chosenVoice = 
-        (savedVoiceName ? voices.find(v => v.name === savedVoiceName) : null) ||
-        voices.find((v) => v.name.includes("David")) ||
-        voices.find((v) => v.lang.includes("en"));
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        
+        await audio.play();
+        
+        // Clean up memory when done
+        audio.onended = () => URL.revokeObjectURL(audioUrl);
+        return; // Exit here if successful
 
-      if (chosenVoice) utterance.voice = chosenVoice;
-      window.speechSynthesis.speak(utterance);
-    };
+      } catch (error) {
+        console.warn("Welcome voice ElevenLabs failed, using browser fallback:", error);
+      }
+    }
 
-    if (window.speechSynthesis.getVoices().length === 0) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        setVoiceAndSpeak();
-        window.speechSynthesis.onvoiceschanged = null;
+    // FALLBACK: Built-in Browser TTS (only runs if ElevenLabs fails)
+    if ("speechSynthesis" in window) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.pitch = 0.85; // Adjusted to match Aura
+      utterance.rate = 0.95;
+
+      const savedVoiceName = localStorage.getItem("aura_selected_voice");
+
+      const setVoiceAndSpeak = () => {
+        const voices = window.speechSynthesis.getVoices();
+        
+        const chosenVoice = 
+          (savedVoiceName ? voices.find(v => v.name === savedVoiceName) : null) ||
+          voices.find((v) => v.name.includes("David")) ||
+          voices.find((v) => v.name.includes("Mark")) ||
+          voices.find((v) => v.lang.includes("en"));
+
+        if (chosenVoice) utterance.voice = chosenVoice;
+        window.speechSynthesis.speak(utterance);
       };
-    } else {
-      setVoiceAndSpeak();
+
+      if (window.speechSynthesis.getVoices().length === 0) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          setVoiceAndSpeak();
+          window.speechSynthesis.onvoiceschanged = null;
+        };
+      } else {
+        setVoiceAndSpeak();
+      }
     }
   };
 
