@@ -861,12 +861,42 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-command-tip { background: rgba(139, 92, 246, 0.04); border-color: rgba(139, 92, 246, 0.15); }
 .aura-light .aura-command-tip p { color: #6b628a; }
 
+/* ★ FIXED: Notification Panel Light Mode Readability */
 .aura-light .aura-notification { 
   background: #ffffff; 
   color: #21183c; 
   box-shadow: 0 20px 60px rgba(139, 92, 246, 0.15); 
 }
-.aura-light .aura-notification p { color: #6b628a; }
+
+/* Make all labels, text, and spans readable */
+.aura-light .aura-notification label,
+.aura-light .aura-notification p,
+.aura-light .aura-notification span,
+.aura-light .aura-notification div {
+  color: #4c3d6b;
+}
+
+/* Status color overrides for readability */
+.aura-light .aura-notification span[style*="var(--aura-cyan)"] {
+  color: #0891b2 !important; 
+}
+.aura-light .aura-notification span[style*="var(--aura-violet)"] {
+  color: #7c3aed !important;
+}
+
+/* Token usage box background fix */
+.aura-light .aura-notification div[style*="background: rgba(139, 92, 246, 0.1)"] {
+  background: rgba(139, 92, 246, 0.05) !important;
+  border-color: rgba(139, 92, 246, 0.2) !important;
+}
+
+/* Dropdown styling */
+.aura-light .aura-notification select {
+  background-color: #ffffff !important;
+  color: #21183c !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
+}
+
 .aura-light .aura-notification button {
   background: rgba(139, 92, 246, 0.1);
   color: var(--aura-purple);
