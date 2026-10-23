@@ -17,6 +17,9 @@ let activeAudio: HTMLAudioElement | null = null;
 // ★ Map of reminder.id → timeout handle so multiple alarms coexist in browser mode
 const activeTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
+// ★ NEW: Global EventTarget to broadcast stop signals to React
+export const alarmEvents = new EventTarget();
+
 /* ------------------------------------------------------------------ */
 /* Storage                                                            */
 /* ------------------------------------------------------------------ */
@@ -347,7 +350,7 @@ export const cancelReminder = (id: string) => {
   removeReminder(id);
 };
 
-// ★ NEW: Stops the audio and the speaking voice
+// ★ Stops the audio, the voice, and broadcasts to React
 export const stopAlarmSound = () => {
   if (activeAudio) {
     try {
@@ -360,9 +363,12 @@ export const stopAlarmSound = () => {
   try {
     window.speechSynthesis.cancel();
   } catch {}
+
+  // ★ Broadcast the stop event to React
+  alarmEvents.dispatchEvent(new Event("stop"));
 };
 
-// ★ NEW: Cancels all active timers and clears the alarm list
+// ★ Cancels all timers and triggers the global stop event
 export const cancelAllAlarms = () => {
   activeTimeouts.forEach((t) => clearTimeout(t));
   activeTimeouts.clear();
