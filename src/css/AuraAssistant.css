@@ -188,7 +188,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   box-shadow: 0 0 12px rgba(239, 68, 68, 0.85) !important;
 }
 
-/* No longer need to push the header down since it floats */
 .aura-app:has(.aura-offline-banner) .aura-header {
   margin-top: 0; 
 }
@@ -273,7 +272,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 .aura-icon-button:hover { border-color: var(--aura-border); background: rgba(139, 92, 246, 0.12); color: var(--aura-violet); }
 
-/* ★ NEW — active state (PiP & hands-free buttons) */
 .aura-icon-button.is-active {
   border-color: rgba(103, 232, 249, 0.5);
   background: rgba(103, 232, 249, 0.1);
@@ -285,7 +283,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   background: rgba(103, 232, 249, 0.16);
 }
 
-/* ★ NEW — dedicated hands-free highlight (green, if you add .is-handsfree in JSX) */
 .aura-icon-button.is-handsfree {
   border-color: rgba(34, 197, 94, 0.5);
   background: rgba(34, 197, 94, 0.1);
@@ -349,6 +346,10 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   -webkit-backdrop-filter: blur(18px);
 }
 
+/* =========================================================
+   COMMAND ARCHIVE (LEFT) - FIXED LENGTH & TRUNCATION
+   ========================================================= */
+
 .aura-sidebar, .aura-results { 
   padding: 20px; 
   display: flex;
@@ -356,6 +357,12 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   min-height: 0;
   overflow: hidden;
 }
+
+/* Ensure sidebar doesn't push past screen */
+.aura-sidebar {
+  max-height: calc(100vh - 120px);
+}
+
 .aura-panel-heading { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-bottom: 24px; }
 .aura-section-icon {
   display: grid;
@@ -372,10 +379,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 
 .aura-eyebrow { display: block; color: var(--aura-muted); font-family: var(--aura-display); font-size: 8px; font-weight: 500; letter-spacing: 0.12em; line-height: 1.7; }
 .aura-panel-heading h2 { margin: 3px 0 0; color: var(--aura-text); font-size: 20px; font-weight: 600; line-height: 1.2; }
-
-/* =========================================================
-   COMMAND ARCHIVE (LEFT)
-   ========================================================= */
 
 .aura-search-box {
   display: flex;
@@ -410,12 +413,14 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-archive-heading { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 12px; color: var(--aura-muted); font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.12em; }
 .aura-archive-heading span:last-child { color: var(--aura-violet); }
 
+/* FIX: Constrained max-height so it doesn't stretch endlessly */
 .aura-history-list { 
   display: flex; 
   flex: 1; 
   flex-direction: column; 
   gap: 7px; 
   min-height: 0; 
+  max-height: 400px; /* Prevents endless stretching */
   overflow-x: hidden; 
   overflow-y: auto; 
   padding-right: 3px; 
@@ -433,11 +438,23 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   text-align: left;
   cursor: pointer;
   transition: background 180ms ease, border-color 180ms ease;
+  flex-shrink: 0;
 }
 .aura-history-item:hover { border-color: var(--aura-border); background: rgba(139, 92, 246, 0.08); }
 .aura-history-index { display: grid; flex-shrink: 0; place-items: center; width: 29px; height: 29px; border: 1px solid rgba(139, 92, 246, 0.16); border-radius: 8px; background: rgba(139, 92, 246, 0.07); color: #9c8fc1; font-family: var(--aura-display); font-size: 9px; }
 .aura-history-copy { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
-.aura-history-copy strong { overflow: hidden; color: #d9d3f1; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+
+/* FIX: Truncate long text gracefully */
+.aura-history-copy strong { 
+  overflow: hidden; 
+  color: #d9d3f1; 
+  font-size: 14px; 
+  font-weight: 500; 
+  text-overflow: ellipsis; 
+  white-space: nowrap; 
+  display: block;
+  max-width: 100%;
+}
 .aura-history-copy small { color: var(--aura-subtle); font-size: 11px; }
 .aura-history-arrow { flex-shrink: 0; color: var(--aura-subtle); font-size: 11px; opacity: 0; transition: opacity 180ms ease, transform 180ms ease; }
 .aura-history-item:hover .aura-history-arrow { transform: translateX(2px); color: var(--aura-violet); opacity: 1; }
@@ -447,7 +464,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-empty-history strong { color: #c9c0e6; font-size: 16px; }
 .aura-empty-history p { max-width: 180px; margin: 8px 0 0; font-size: 13px; line-height: 1.6; }
 
-.aura-sidebar-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--aura-border); }
+.aura-sidebar-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--aura-border); }
 .aura-sidebar-footer > div { display: flex; align-items: center; gap: 7px; color: var(--aura-muted); font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.05em; }
 .aura-sidebar-footer .aura-live-dot { width: 5px; height: 5px; background: #a78bfa; }
 .aura-clear-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--aura-muted); font-family: var(--aura-display); font-size: 8px; cursor: pointer; }
@@ -562,7 +579,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .listening-active .aura-orb-ring-one { border-left-color: var(--aura-cyan); border-right-color: var(--aura-pink); }
 .listening-active .aura-orb-ring-two { border-top-color: var(--aura-cyan); border-bottom-color: var(--aura-violet); }
 
-/* ★ NEW — STAND-BY STATE (hands-free armed, waiting for wake word) */
 .orb-standby {
   border-color: rgba(167, 139, 250, 0.55);
   box-shadow:
@@ -609,7 +625,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   50%      { opacity: 1; }
 }
 
-/* Greeting & Status */
 .aura-greeting { width: 100%; margin-top: 26px; text-align: center; }
 .aura-greeting .aura-eyebrow { color: #9d8dcf; font-size: 9px; letter-spacing: 0.18em; }
 .aura-greeting h2 { margin: 8px 0 10px; font-size: clamp(25px, 2.4vw, 35px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; }
@@ -636,14 +651,12 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-status-indicator { width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; box-shadow: 0 0 10px rgba(139, 92, 246, 0.6); }
 .aura-status-indicator.active { background: var(--aura-cyan); box-shadow: 0 0 12px rgba(103, 232, 249, 0.8); }
 
-/* ★ NEW — standby status indicator pulse */
 .aura-status-indicator.standby {
   background: var(--aura-violet);
   box-shadow: 0 0 10px rgba(167, 139, 250, 0.7);
   animation: auraLive 3s ease-in-out infinite;
 }
 
-/* Voice Button */
 .aura-mic-button {
   position: relative;
   display: flex;
@@ -696,7 +709,8 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-output-heading .aura-live-dot { width: 6px; height: 6px; }
 .aura-output-content { flex: 1; min-height: 90px; overflow-x: hidden; overflow-y: auto; }
 
-.aura-response { padding: 15px; border: 1px solid rgba(139, 92, 246, 0.19); border-radius: 10px; background: linear-gradient(145deg, rgba(30, 22, 58, 0.7), rgba(12, 10, 28, 0.8)); }
+.aura-response { padding: 15px; border: 1px solid rgba(139, 92, 246, 0.19); border-radius: 10px; background: linear-gradient(145deg, rgba(30, 22, 58, 0.7), rgba(12, 10, 28, 0.8)); transition: border-color 180ms ease, background 180ms ease; }
+.aura-response:hover { border-color: var(--aura-border-bright); background: rgba(139, 92, 246, 0.08); }
 .aura-response-label { display: flex; align-items: center; gap: 8px; color: #b6a2ed; font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.1em; }
 .aura-response-label .aura-live-dot { width: 5px; height: 5px; }
 .aura-response p { margin: 13px 0 0; overflow-wrap: anywhere; color: #d2cbe6; font-size: 15px; line-height: 1.8; white-space: pre-wrap; }
@@ -771,7 +785,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   scrollbar-color: #cbd5e1 transparent;
 }
 
-/* ★ NEW — light mode offline banner */
 .aura-light .aura-offline-banner {
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(239, 68, 68, 0.3);
@@ -1000,7 +1013,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 2px; }
   .aura-header-actions .aura-icon-button { width: 32px; height: 32px; }
 
-  /* ★ NEW — mobile offline banner tweaks (floating pill adjustment) */
   .aura-offline-banner {
     padding: 8px 16px;
     gap: 10px;
@@ -1033,19 +1045,20 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 
   .aura-sidebar { 
     order: 2; 
-    max-height: 400px; 
+    max-height: none;
     flex-shrink: 0; 
-    overflow-y: auto;
+    overflow-y: visible;
+    margin-bottom: 15px;
   }
   
   .aura-results { 
     order: 3; 
     min-height: auto; 
-    max-height: none; 
+    max-height: none;
     flex-shrink: 0; 
+    overflow-y: visible;
   }
 
-  /* Make the orb smaller on mobile so it doesn't take up the whole screen */
   .aura-core-stage { padding: 10px 10px 20px; }
   .aura-orb { width: min(200px, 60vw); } 
   .aura-greeting h2 { font-size: 24px; }
@@ -1079,7 +1092,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 
 @media (max-width: 400px) {
-  /* ★ CHANGED — tighter action row for 4 buttons */
   .aura-header-actions { gap: 0; }
   .aura-header-actions .aura-icon-button { width: 27px; height: 32px; }
   .aura-brand h1 { font-size: 11px; letter-spacing: 0.05em; }
@@ -1262,4 +1274,24 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-markdown-container blockquote {
   background: rgba(139, 92, 246, 0.08);
   color: #6b628a;
+}
+
+/* =========================================================
+   SMOOTH MODAL ANIMATIONS
+   ========================================================= */
+
+@keyframes auraBackdropIn {
+  from { background-color: rgba(5, 3, 15, 0); backdrop-filter: blur(0px); }
+  to { background-color: rgba(5, 3, 15, 0.7); backdrop-filter: blur(12px); }
+}
+
+@keyframes auraModalPop {
+  0% { 
+    opacity: 0; 
+    transform: scale(0.92) translateY(20px); 
+  }
+  100% { 
+    opacity: 1; 
+    transform: scale(1) translateY(0); 
+  }
 }
