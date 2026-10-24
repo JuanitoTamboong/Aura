@@ -112,7 +112,6 @@ const AuraAssistant: React.FC = () => {
     return localStorage.getItem("aura_selected_voice") || "";
   });
 
-  // FIX: Persist preferred engine
   const [preferredEngine, setPreferredEngine] = useState<"elevenlabs" | "browser">(() => {
     return (localStorage.getItem("aura_preferred_engine") as "elevenlabs" | "browser") || "elevenlabs";
   });
@@ -157,7 +156,10 @@ const AuraAssistant: React.FC = () => {
   const mountedRef = useRef(true);
   const lastCommandTextRef = useRef("");
   
-  const ignoreMicRef = useRef(false);
+  // FIX: Refs for handling audio feedback loop
+  const ignoreMicRef = useRef(false); 
+  const isSpeakingRef = useRef(false); 
+  
   const stopRequestedRef = useRef(false);
   const autoCloseTimeoutRef = useRef<any>(null);
 
@@ -189,6 +191,25 @@ const AuraAssistant: React.FC = () => {
     }
   });
 
+  // FIX: Microphone sensitivity boost
+  useEffect(() => {
+    const requestAudioPermissions = async () => {
+      try {
+        // Requesting audio with constraints forces the browser to use auto-gain
+        await navigator.mediaDevices.getUserMedia({ 
+          audio: { 
+            autoGainControl: true, 
+            noiseSuppression: true, 
+            echoCancellation: true 
+          } 
+        });
+      } catch (err) {
+        console.warn("Mic permission/gain request failed:", err);
+      }
+    };
+    requestAudioPermissions();
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
@@ -197,7 +218,6 @@ const AuraAssistant: React.FC = () => {
     }
   }, [history]);
 
-  // FIX: Persist Preferred Engine to LocalStorage
   useEffect(() => {
     localStorage.setItem("aura_preferred_engine", preferredEngine);
   }, [preferredEngine]);
@@ -298,6 +318,8 @@ const AuraAssistant: React.FC = () => {
     setManualOpen(false);
     setStatusText("SYSTEM ONLINE");
     setTranscriptText("Alarm stopped. Standing by.");
+    isSpeakingRef.current = false;
+    ignoreMicRef.current = false;
   };
 
   useEffect(() => {
@@ -414,26 +436,30 @@ const AuraAssistant: React.FC = () => {
     handsFreeRef.current = handsFree;
   }, [handsFree]);
 
+  // FIX: Improved mobile/desktop voice loading logic
   useEffect(() => {
     const loadVoices = () => {
       const allVoices = window.speechSynthesis.getVoices();
       
-      const filteredVoices = allVoices.filter(v => 
-        v.name.includes("David") || 
-        v.name.includes("Mark") || 
-        v.name.includes("Zira")
-      );
-
-      setAvailableVoices(filteredVoices);
-
-      const savedVoice = localStorage.getItem("aura_selected_voice");
+      // Select all English voices. If mobile, this will pull mobile defaults.
+      const englishVoices = allVoices.filter(v => v.lang.startsWith("en"));
       
-      if (savedVoice) {
-        if (selectedVoiceName !== savedVoice) {
-          setSelectedVoiceName(savedVoice);
-        }
-      } else if (!selectedVoiceName && filteredVoices.length > 0) {
-        setSelectedVoiceName(filteredVoices[0].name);
+      // Attempt to find the user's saved voice
+      const savedVoice = localStorage.getItem("aura_selected_voice");
+      let defaultVoice = englishVoices.find(v => v.name === savedVoice);
+
+      // Fallbacks: look for common names (desktop), then just use the first English voice (mobile)
+      if (!defaultVoice) {
+        defaultVoice = englishVoices.find(v => v.name.includes("Google US English")) 
+                    || englishVoices.find(v => v.name.includes("David")) 
+                    || englishVoices.find(v => v.name.includes("Mark")) 
+                    || englishVoices[0];
+      }
+
+      setAvailableVoices(englishVoices);
+
+      if (defaultVoice && !selectedVoiceName) {
+        setSelectedVoiceName(defaultVoice.name);
       }
     };
 
@@ -509,7 +535,7 @@ const AuraAssistant: React.FC = () => {
         const cy = height / 2;
         const radius = Math.min(width, height) * 0.32;
         const active =
-          micModeRef.current === "active" || window.speechSynthesis.speaking;
+          micModeRef.current === "active" || isSpeakingRef.current;
 
         phase += active ? 0.045 : 0.012;
 
@@ -601,6 +627,7 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation]);
 
+  // FIX: Robust TTS handling to prevent loops
   const auraSpeak = useCallback(async (
     text: string, 
     override?: { engine: "elevenlabs" | "browser", voiceName?: string }
@@ -608,21 +635,33 @@ const AuraAssistant: React.FC = () => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
     const currentGeneration = ++speechGenerationRef.current;
-
-    // FIX: Fallback logic for override or preferred engine
     const targetEngine = override?.engine || preferredEngine;
     const targetVoiceName = override?.voiceName !== undefined ? override.voiceName : selectedVoiceName;
 
-    window.speechSynthesis.cancel();
-    if (audioPlaybackRef.current) {
-      try {
+    // 1. Hard stop everything currently playing
+    try {
+      window.speechSynthesis.cancel();
+      if (audioPlaybackRef.current) {
         audioPlaybackRef.current.pause();
         audioPlaybackRef.current.currentTime = 0;
-      } catch {}
-      audioPlaybackRef.current = null;
-    }
+        audioPlaybackRef.current = null;
+      }
+    } catch (e) {}
 
+    // 2. Lock the microphone
+    isSpeakingRef.current = true;
     ignoreMicRef.current = true;
+
+    // Helper to unlock mic safely
+    const finishSpeaking = () => {
+      if (speechGenerationRef.current !== currentGeneration) return;
+      isSpeakingRef.current = false;
+      // Wait a short moment to let the speaker output fade before listening
+      setTimeout(() => {
+        ignoreMicRef.current = false;
+        setStatusText(isListeningRef.current ? "LISTENING" : "SYSTEM ONLINE");
+      }, 600);
+    };
 
     if (targetEngine === "browser") {
       setVoiceEngine("fallback");
@@ -636,11 +675,8 @@ const AuraAssistant: React.FC = () => {
       const chosenVoice = voices.find(v => v.name === targetVoiceName);
       if (chosenVoice) utterance.voice = chosenVoice;
 
-      utterance.onend = () => {
-        if (speechGenerationRef.current !== currentGeneration) return;
-        ignoreMicRef.current = false;
-        setStatusText(isListeningRef.current ? "LISTENING" : "SYSTEM ONLINE");
-      };
+      utterance.onend = finishSpeaking;
+      utterance.onerror = finishSpeaking;
       
       window.speechSynthesis.speak(utterance);
       return;
@@ -693,19 +729,12 @@ const AuraAssistant: React.FC = () => {
       setVoiceEngine("premium");
 
       audio.onended = () => {
-        if (speechGenerationRef.current !== currentGeneration) return;
-        ignoreMicRef.current = false;
         URL.revokeObjectURL(audioUrl); 
-        if (isListeningRef.current) {
-          setStatusText("LISTENING");
-        } else {
-          setStatusText("SYSTEM ONLINE");
-        }
+        finishSpeaking();
       };
 
       audio.onerror = () => {
-        if (speechGenerationRef.current !== currentGeneration) return;
-        ignoreMicRef.current = false;
+        finishSpeaking();
         setStatusText("AUDIO ERROR");
       };
 
@@ -721,23 +750,16 @@ const AuraAssistant: React.FC = () => {
       utterance.rate = 0.95;  
 
       const voices = window.speechSynthesis.getVoices();
-      const chosenVoice = voices.find(v => v.name === targetVoiceName) || voices.find(v => v.name.includes("David") || v.name.includes("Mark"));
+      // Try to find a high quality fallback
+      const chosenVoice = voices.find(v => v.name === targetVoiceName) 
+                       || voices.find(v => v.name.includes("Google US English"))
+                       || voices.find(v => v.name.includes("David") || v.name.includes("Mark"))
+                       || voices[0];
+                       
       if (chosenVoice) utterance.voice = chosenVoice;
 
-      utterance.onend = () => {
-        if (speechGenerationRef.current !== currentGeneration) return;
-        ignoreMicRef.current = false;
-        if (isListeningRef.current) {
-          setStatusText("LISTENING");
-        } else {
-          setStatusText("SYSTEM ONLINE");
-        }
-      };
-
-      utterance.onerror = () => {
-        if (speechGenerationRef.current !== currentGeneration) return;
-        ignoreMicRef.current = false;
-      };
+      utterance.onend = finishSpeaking;
+      utterance.onerror = finishSpeaking;
 
       window.speechSynthesis.speak(utterance);
     }
@@ -772,15 +794,6 @@ const AuraAssistant: React.FC = () => {
       });
     }
   }, [bootStage, auraSpeak]);
-
-  const prevVoiceRef = useRef<string>("");
-  useEffect(() => {
-    // Only speak preview if voice actually changed and it's not the initial load
-    if (selectedVoiceName && prevVoiceRef.current && prevVoiceRef.current !== selectedVoiceName) {
-      auraSpeak("Voice updated. How does this sound?", { engine: "browser", voiceName: selectedVoiceName });
-    }
-    prevVoiceRef.current = selectedVoiceName;
-  }, [selectedVoiceName, auraSpeak]);
 
   useEffect(() => {
     const wasOnline = wasOnlineRef.current;
@@ -955,6 +968,11 @@ const AuraAssistant: React.FC = () => {
       recognition.lang = "en-US";
 
       recognition.onresult = (event: any) => {
+        // FIX: Immediately ignore if Aura is currently speaking
+        if (isSpeakingRef.current || ignoreMicRef.current) {
+          return;
+        }
+
         let interim = "";
         const finalCommands: string[] = [];
 
@@ -1046,7 +1064,7 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
-        if (window.speechSynthesis.speaking || ignoreMicRef.current) {
+        if (isSpeakingRef.current) {
           return; 
         }
 
@@ -1133,7 +1151,7 @@ const AuraAssistant: React.FC = () => {
     if (!handsFree) return;
     
     const watchdog = setInterval(() => {
-        if (micModeRef.current !== "off" && !stopRequestedRef.current) {
+        if (micModeRef.current !== "off" && !stopRequestedRef.current && !isSpeakingRef.current) {
             try {
                 if (recognitionRef.current) {
                     recognitionRef.current.start(); 
@@ -1231,7 +1249,7 @@ const AuraAssistant: React.FC = () => {
     if (manualOpen) return; 
 
     const checkSpeechAndClose = () => {
-      if (!window.speechSynthesis.speaking) {
+      if (!window.speechSynthesis.speaking && !isSpeakingRef.current) {
         if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
         
         autoCloseTimeoutRef.current = setTimeout(() => {
@@ -1757,7 +1775,7 @@ const AuraAssistant: React.FC = () => {
               }}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                 {preferredEngine === "elevenlabs" ? "⭐ ElevenLabs (Premium)" : selectedVoiceName}
+                 {preferredEngine === "elevenlabs" ? "⭐ ElevenLabs (Premium)" : selectedVoiceName || "Browser Default"}
               </span>
               <FaChevronDown style={{ transform: isVoiceDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}/>
             </button>
@@ -1778,7 +1796,6 @@ const AuraAssistant: React.FC = () => {
                     setPreferredEngine("elevenlabs");
                     setVoiceEngine("premium");
                     setIsVoiceDropdownOpen(false);
-                    // Preview the premium voice
                     setTimeout(() => auraSpeak("Premium voice activated.", { engine: "elevenlabs" }), 100);
                   }}
                   style={{ padding: '8px 10px', cursor: 'pointer', fontSize: '12px', borderBottom: '1px solid var(--aura-border)' }}
@@ -1794,7 +1811,7 @@ const AuraAssistant: React.FC = () => {
                       setVoiceEngine("fallback");
                       setSelectedVoiceName(voice.name);
                       setIsVoiceDropdownOpen(false);
-                      // FIX: Force browser engine for preview so it actually uses the new voice
+                      // Force browser engine for preview
                       setTimeout(() => auraSpeak("Browser voice activated.", { engine: "browser", voiceName: voice.name }), 100);
                     }}
                     style={{ padding: '8px 10px', cursor: 'pointer', fontSize: '12px', borderBottom: '1px solid var(--aura-border)' }}
@@ -1921,7 +1938,6 @@ const AuraAssistant: React.FC = () => {
             <span>RECENT ACTIVITY</span><span>{filteredHistory.length.toString().padStart(2, "0")}</span>
           </div>
 
-          {/* FIX: Added CSS class handling for max-height & scrolling */}
           <div className="aura-history-list">
             {filteredHistory.length > 0 ? (
               filteredHistory.map((item, index) => (
