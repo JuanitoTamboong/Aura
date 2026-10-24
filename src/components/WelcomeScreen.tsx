@@ -9,99 +9,57 @@ interface WelcomeScreenProps {
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
   const [isFading, setIsFading] = useState(false);
   const [greeting, setGreeting] = useState("");
-  
-  // ★ NEW: Read the theme from local storage
+
+  // Read the theme from local storage
   const [lightMode] = useState(() => {
     return localStorage.getItem("aura_light_mode") === "true";
   });
 
   const hasPlayedRef = useRef(false);
 
-  // ★ UPDATED: Use ElevenLabs Premium Voice with Browser Fallback
-  const playWelcomeVoice = async () => {
+  // Use the built-in browser voice (no ElevenLabs)
+  const playWelcomeVoice = () => {
     if (hasPlayedRef.current) return;
     hasPlayedRef.current = true;
 
     // Stop any existing audio
-    window.speechSynthesis.cancel();
-    
+    try {
+      window.speechSynthesis.cancel();
+    } catch {}
+
     const text = "Welcome back, Sir.";
-    const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
-    const voiceId = import.meta.env.VITE_ELEVENLABS_VOICE_ID;
 
-    // Try ElevenLabs First
-    if (apiKey && voiceId) {
-      try {
-        const response = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-          {
-            method: "POST",
-            headers: {
-              "Accept": "audio/mpeg",
-              "Content-Type": "application/json",
-              "xi-api-key": apiKey,
-            },
-            body: JSON.stringify({
-              text: text,
-              model_id: "eleven_multilingual_v2", 
-              voice_settings: {
-                stability: 0.35,
-                similarity_boost: 0.75,
-                style: 0.0,
-                use_speaker_boost: true
-              },
-            }),
-          }
-        );
+    if (!("speechSynthesis" in window)) return;
 
-        if (!response.ok) {
-          throw new Error(`ElevenLabs API failed with status: ${response.status}`);
-        }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.pitch = 0.85;
+    utterance.rate = 0.95;
 
-        const blob = await response.blob();
-        const audioUrl = URL.createObjectURL(blob);
-        const audio = new Audio(audioUrl);
-        
-        await audio.play();
-        
-        // Clean up memory when done
-        audio.onended = () => URL.revokeObjectURL(audioUrl);
-        return; // Exit here if successful
+    const savedVoiceName = localStorage.getItem("aura_selected_voice");
 
-      } catch (error) {
-        console.warn("Welcome voice ElevenLabs failed, using browser fallback:", error);
-      }
-    }
+    const setVoiceAndSpeak = () => {
+      const voices = window.speechSynthesis.getVoices();
 
-    // FALLBACK: Built-in Browser TTS (only runs if ElevenLabs fails)
-    if ("speechSynthesis" in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.pitch = 0.85; // Adjusted to match Aura
-      utterance.rate = 0.95;
+      const chosenVoice =
+        (savedVoiceName ? voices.find((v) => v.name === savedVoiceName) : null) ||
+        voices.find((v) => v.name.includes("Google US English")) ||
+        voices.find((v) => v.name.includes("David")) ||
+        voices.find((v) => v.name.includes("Mark")) ||
+        voices.find((v) => v.lang.startsWith("en")) ||
+        voices[0];
 
-      const savedVoiceName = localStorage.getItem("aura_selected_voice");
+      if (chosenVoice) utterance.voice = chosenVoice;
+      window.speechSynthesis.speak(utterance);
+    };
 
-      const setVoiceAndSpeak = () => {
-        const voices = window.speechSynthesis.getVoices();
-        
-        const chosenVoice = 
-          (savedVoiceName ? voices.find(v => v.name === savedVoiceName) : null) ||
-          voices.find((v) => v.name.includes("David")) ||
-          voices.find((v) => v.name.includes("Mark")) ||
-          voices.find((v) => v.lang.includes("en"));
-
-        if (chosenVoice) utterance.voice = chosenVoice;
-        window.speechSynthesis.speak(utterance);
-      };
-
-      if (window.speechSynthesis.getVoices().length === 0) {
-        window.speechSynthesis.onvoiceschanged = () => {
-          setVoiceAndSpeak();
-          window.speechSynthesis.onvoiceschanged = null;
-        };
-      } else {
+    // Voices load asynchronously on some browsers (especially mobile)
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.onvoiceschanged = () => {
         setVoiceAndSpeak();
-      }
+        window.speechSynthesis.onvoiceschanged = null;
+      };
+    } else {
+      setVoiceAndSpeak();
     }
   };
 
@@ -113,7 +71,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
         playWelcomeVoice();
       }
     };
-    
+
     window.addEventListener("click", handleInteraction);
     window.addEventListener("keydown", handleInteraction);
     window.addEventListener("touchstart", handleInteraction, { passive: true });
@@ -144,7 +102,6 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onComplete }) => {
     };
   }, [onComplete]);
 
-  // ★ NEW: Added conditional class here
   return (
     <div className={`welcome-container ${lightMode ? "aura-light" : ""} ${isFading ? "fade-out" : ""}`}>
       <div className="welcome-scanlines" />
