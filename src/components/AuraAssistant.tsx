@@ -135,6 +135,9 @@ const AuraAssistant: React.FC = () => {
 
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioPlaybackRef = useRef<HTMLAudioElement | null>(null); 
+  
+  // ★ FIX: Speech Generation ID to prevent double/overlapping speech
+  const speechGenerationRef = useRef<number>(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const modalCanvasRef = useRef<HTMLCanvasElement | null>(null); 
@@ -581,12 +584,15 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation, isMobile]);
 
-  // ★ PREMIUM TTS: ElevenLabs with Fallback (UPDATED with override support)
+  // ★ PREMIUM TTS: ElevenLabs with Fallback (UPDATED with generation tracking)
   const auraSpeak = useCallback(async (
     text: string, 
     override?: { engine: "elevenlabs" | "browser", voiceName?: string }
   ) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
+
+    // ★ Increment generation to invalidate any pending callbacks
+    const currentGeneration = ++speechGenerationRef.current;
 
     const targetEngine = override?.engine || preferredEngine;
     const targetVoiceName = override?.voiceName !== undefined ? override.voiceName : selectedVoiceName;
@@ -616,6 +622,8 @@ const AuraAssistant: React.FC = () => {
       if (chosenVoice) utterance.voice = chosenVoice;
 
       utterance.onend = () => {
+        // ★ Only reset if this is still the current speech
+        if (speechGenerationRef.current !== currentGeneration) return;
         ignoreMicRef.current = false;
         setStatusText(isListeningRef.current ? "LISTENING" : "SYSTEM ONLINE");
       };
@@ -672,6 +680,8 @@ const AuraAssistant: React.FC = () => {
       setVoiceEngine("premium");
 
       audio.onended = () => {
+        // ★ Only reset if this is still the current speech
+        if (speechGenerationRef.current !== currentGeneration) return;
         ignoreMicRef.current = false;
         URL.revokeObjectURL(audioUrl); 
         if (isListeningRef.current) {
@@ -682,6 +692,7 @@ const AuraAssistant: React.FC = () => {
       };
 
       audio.onerror = () => {
+        if (speechGenerationRef.current !== currentGeneration) return;
         ignoreMicRef.current = false;
         setStatusText("AUDIO ERROR");
       };
@@ -702,6 +713,7 @@ const AuraAssistant: React.FC = () => {
       if (chosenVoice) utterance.voice = chosenVoice;
 
       utterance.onend = () => {
+        if (speechGenerationRef.current !== currentGeneration) return;
         ignoreMicRef.current = false;
         if (isListeningRef.current) {
           setStatusText("LISTENING");
@@ -711,6 +723,7 @@ const AuraAssistant: React.FC = () => {
       };
 
       utterance.onerror = () => {
+        if (speechGenerationRef.current !== currentGeneration) return;
         ignoreMicRef.current = false;
       };
 
@@ -1696,11 +1709,20 @@ const AuraAssistant: React.FC = () => {
               }} 
               style={{ 
                 width: '100%', padding: '8px', 
+                paddingRight: '30px', // Make room for the custom arrow
                 background: lightMode ? '#ffffff' : '#0f0d23', 
                 color: lightMode ? '#21183c' : '#fff', 
                 border: '1px solid var(--aura-border-bright)', 
                 borderRadius: '5px', fontSize: '12px', outline: 'none',
-                colorScheme: lightMode ? 'light' : 'dark'
+                colorScheme: lightMode ? 'light' : 'dark',
+                appearance: 'none', // ★ FIX: Removes default mobile widget
+                backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23a78bfa%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`, // ★ FIX: Custom arrow
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 10px center',
+                backgroundSize: '10px',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden'
               }}
             >
               <option 
