@@ -140,6 +140,9 @@ const AuraAssistant: React.FC = () => {
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioPlaybackRef = useRef<HTMLAudioElement | null>(null); 
   const speechGenerationRef = useRef<number>(0);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commandInFlightRef = useRef(false);
+  const lastAcceptedAtRef = useRef(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const modalCanvasRef = useRef<HTMLCanvasElement | null>(null); 
@@ -191,24 +194,9 @@ const AuraAssistant: React.FC = () => {
     }
   });
 
-  // FIX: Microphone sensitivity boost
-  useEffect(() => {
-    const requestAudioPermissions = async () => {
-      try {
-        // Requesting audio with constraints forces the browser to use auto-gain
-        await navigator.mediaDevices.getUserMedia({ 
-          audio: { 
-            autoGainControl: true, 
-            noiseSuppression: true, 
-            echoCancellation: true 
-          } 
-        });
-      } catch (err) {
-        console.warn("Mic permission/gain request failed:", err);
-      }
-    };
-    requestAudioPermissions();
-  }, []);
+  // Note: Web Speech API controls its own microphone stream. getUserMedia constraints
+  // on a separate stream do not reliably filter audio used by SpeechRecognition.
+  // Ask for microphone permission only when the user explicitly starts voice mode.
 
   useEffect(() => {
     try {
@@ -436,36 +424,31 @@ const AuraAssistant: React.FC = () => {
     handsFreeRef.current = handsFree;
   }, [handsFree]);
 
-  // FIX: Improved mobile/desktop voice loading logic
+  // Load voices asynchronously; mobile browsers often populate this list later.
   useEffect(() => {
     const loadVoices = () => {
-      const allVoices = window.speechSynthesis.getVoices();
-      
-      // Select all English voices. If mobile, this will pull mobile defaults.
-      const englishVoices = allVoices.filter(v => v.lang.startsWith("en"));
-      
-      // Attempt to find the user's saved voice
-      const savedVoice = localStorage.getItem("aura_selected_voice");
-      let defaultVoice = englishVoices.find(v => v.name === savedVoice);
+      const allVoices = window.speechSynthesis?.getVoices?.() ?? [];
+      const englishVoices = allVoices.filter((voice) => /^en([_-]|$)/i.test(voice.lang));
+      const usableVoices = englishVoices.length ? englishVoices : allVoices;
+      setAvailableVoices(usableVoices);
 
-      // Fallbacks: look for common names (desktop), then just use the first English voice (mobile)
-      if (!defaultVoice) {
-        defaultVoice = englishVoices.find(v => v.name.includes("Google US English")) 
-                    || englishVoices.find(v => v.name.includes("David")) 
-                    || englishVoices.find(v => v.name.includes("Mark")) 
-                    || englishVoices[0];
-      }
-
-      setAvailableVoices(englishVoices);
-
-      if (defaultVoice && !selectedVoiceName) {
-        setSelectedVoiceName(defaultVoice.name);
+      const savedVoice = localStorage.getItem("aura_selected_voice") || selectedVoiceName;
+      const savedStillExists = usableVoices.some((voice) => voice.name === savedVoice);
+      if (!savedStillExists && usableVoices.length) {
+        const preferred = usableVoices.find((voice) => /google.*english|natural|samantha|david|mark/i.test(voice.name)) || usableVoices[0];
+        setSelectedVoiceName(preferred.name);
       }
     };
 
     loadVoices();
-    if (window.speechSynthesis.onvoiceschanged !== undefined) {
-      window.speechSynthesis.onvoiceschanged = loadVoices;
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.addEventListener?.("voiceschanged", loadVoices);
+      // Some mobile browsers fire voiceschanged late or inconsistently.
+      const retry = window.setTimeout(loadVoices, 800);
+      return () => {
+        window.clearTimeout(retry);
+        window.speechSynthesis.removeEventListener?.("voiceschanged", loadVoices);
+      };
     }
   }, [selectedVoiceName]);
 
@@ -483,6 +466,7 @@ const AuraAssistant: React.FC = () => {
       cancelAnimationFrame(pipAnimationRef.current);
       cancelAnimationFrame(modalAnimationRef.current);
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
     };
   }, []);
 
@@ -627,141 +611,110 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation]);
 
-  // FIX: Robust TTS handling to prevent loops
+  // Speak with the microphone locked. Stop recognition before playback to prevent
+  // mobile speaker feedback; resume through one guarded path after playback ends.
   const auraSpeak = useCallback(async (
-    text: string, 
+    text: string,
     override?: { engine: "elevenlabs" | "browser", voiceName?: string }
   ) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
     const currentGeneration = ++speechGenerationRef.current;
     const targetEngine = override?.engine || preferredEngine;
-    const targetVoiceName = override?.voiceName !== undefined ? override.voiceName : selectedVoiceName;
+    const targetVoiceName = override?.voiceName ?? selectedVoiceName;
 
-    // 1. Hard stop everything currently playing
-    try {
-      window.speechSynthesis.cancel();
-      if (audioPlaybackRef.current) {
-        audioPlaybackRef.current.pause();
-        audioPlaybackRef.current.currentTime = 0;
-        audioPlaybackRef.current = null;
-      }
-    } catch (e) {}
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
 
-    // 2. Lock the microphone
     isSpeakingRef.current = true;
     ignoreMicRef.current = true;
+    setStatusText("SPEAKING");
 
-    // Helper to unlock mic safely
+    // Cancel any existing output and stop the recognizer before starting audio.
+    try { window.speechSynthesis.cancel(); } catch {}
+    if (audioPlaybackRef.current) {
+      try {
+        audioPlaybackRef.current.onended = null;
+        audioPlaybackRef.current.onerror = null;
+        audioPlaybackRef.current.pause();
+        audioPlaybackRef.current.currentTime = 0;
+      } catch {}
+      audioPlaybackRef.current = null;
+    }
+    try { recognitionRef.current?.stop(); } catch {}
+
+    let finished = false;
     const finishSpeaking = () => {
-      if (speechGenerationRef.current !== currentGeneration) return;
+      if (finished || speechGenerationRef.current !== currentGeneration) return;
+      finished = true;
       isSpeakingRef.current = false;
-      // Wait a short moment to let the speaker output fade before listening
-      setTimeout(() => {
+      // Allow speaker echo to decay before recognition is restarted.
+      restartTimerRef.current = window.setTimeout(() => {
+        if (speechGenerationRef.current !== currentGeneration) return;
         ignoreMicRef.current = false;
-        setStatusText(isListeningRef.current ? "LISTENING" : "SYSTEM ONLINE");
-      }, 600);
+        setStatusText(micModeRef.current === "standby" ? "STANDBY" :
+          (micModeRef.current === "active" || isListeningRef.current ? "LISTENING" : "SYSTEM ONLINE"));
+        const shouldListen = !stopRequestedRef.current &&
+          (micModeRef.current === "standby" || micModeRef.current === "active" || isListeningRef.current);
+        if (shouldListen && recognitionRef.current) {
+          try { recognitionRef.current.start(); } catch { /* already starting */ }
+        }
+      }, 850);
     };
 
-    if (targetEngine === "browser") {
+    const speakWithBrowser = () => {
       setVoiceEngine("fallback");
-      setStatusText("SPEAKING");
-      
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.pitch = 0.85;
       utterance.rate = 0.95;
-      
       const voices = window.speechSynthesis.getVoices();
-      const chosenVoice = voices.find(v => v.name === targetVoiceName);
+      const chosenVoice = voices.find((voice) => voice.name === targetVoiceName)
+        || voices.find((voice) => /google.*english|natural|samantha|david|mark/i.test(voice.name))
+        || voices.find((voice) => /^en/i.test(voice.lang))
+        || voices[0];
       if (chosenVoice) utterance.voice = chosenVoice;
-
       utterance.onend = finishSpeaking;
       utterance.onerror = finishSpeaking;
-      
-      window.speechSynthesis.speak(utterance);
+      try { window.speechSynthesis.speak(utterance); }
+      catch { finishSpeaking(); }
+    };
+
+    if (targetEngine === "browser") {
+      speakWithBrowser();
       return;
     }
 
     setVoiceEngine("loading");
-    setStatusText("SPEAKING");
-
     try {
       const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
       const voiceId = import.meta.env.VITE_ELEVENLABS_VOICE_ID;
+      if (!apiKey || !voiceId) throw new Error("Missing ElevenLabs API Key or Voice ID");
 
-      if (!apiKey || !voiceId) {
-        throw new Error("Missing ElevenLabs API Key or Voice ID");
-      }
-
-      const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-        {
-          method: "POST",
-          headers: {
-            "Accept": "audio/mpeg",
-            "Content-Type": "application/json",
-            "xi-api-key": apiKey,
-          },
-          body: JSON.stringify({
-            text: text,
-            model_id: "eleven_multilingual_v2", 
-            voice_settings: {
-              stability: 0.35, 
-              similarity_boost: 0.75,
-              style: 0.0,            
-              use_speaker_boost: true 
-            },
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`ElevenLabs API failed with status: ${response.status}`);
-      }
-
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: "POST",
+        headers: { "Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": apiKey },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: 0.35, similarity_boost: 0.75, style: 0, use_speaker_boost: true },
+        }),
+      });
+      if (!response.ok) throw new Error(`ElevenLabs API failed with status: ${response.status}`);
       fetchTokenUsage();
-
       const blob = await response.blob();
+      if (speechGenerationRef.current !== currentGeneration) return;
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
-      
       audioPlaybackRef.current = audio;
       setVoiceEngine("premium");
-
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl); 
-        finishSpeaking();
-      };
-
-      audio.onerror = () => {
-        finishSpeaking();
-        setStatusText("AUDIO ERROR");
-      };
-
+      audio.onended = () => { URL.revokeObjectURL(audioUrl); finishSpeaking(); };
+      audio.onerror = () => { URL.revokeObjectURL(audioUrl); finishSpeaking(); setStatusText("AUDIO ERROR"); };
       await audio.play();
-
     } catch (error) {
-      console.warn("ElevenLabs TTS failed, falling back to browser TTS:", error);
-      
-      setVoiceEngine("fallback");
-      
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.pitch = 0.85; 
-      utterance.rate = 0.95;  
-
-      const voices = window.speechSynthesis.getVoices();
-      // Try to find a high quality fallback
-      const chosenVoice = voices.find(v => v.name === targetVoiceName) 
-                       || voices.find(v => v.name.includes("Google US English"))
-                       || voices.find(v => v.name.includes("David") || v.name.includes("Mark"))
-                       || voices[0];
-                       
-      if (chosenVoice) utterance.voice = chosenVoice;
-
-      utterance.onend = finishSpeaking;
-      utterance.onerror = finishSpeaking;
-
-      window.speechSynthesis.speak(utterance);
+      console.warn("ElevenLabs TTS failed; using browser speech:", error);
+      if (speechGenerationRef.current === currentGeneration) speakWithBrowser();
     }
   }, [selectedVoiceName, fetchTokenUsage, preferredEngine]);
 
@@ -832,11 +785,8 @@ const AuraAssistant: React.FC = () => {
     stopRequestedRef.current = true;
     isListeningRef.current = false;
     setIsListening(false);
-    
-    try {
-      recognitionRef.current?.stop();
-    } catch {}
-    
+    if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    try { recognitionRef.current?.stop(); } catch {}
     setStatusText("SYSTEM ONLINE");
   }, []);
 
@@ -846,14 +796,11 @@ const AuraAssistant: React.FC = () => {
     setMicMode("active");
     setIsListening(true);
     isListeningRef.current = true;
+    stopRequestedRef.current = false;
     setStatusText("LISTENING");
     setTranscriptText("I'm listening. Say your command.");
-    
-    try {
-      recognitionRef.current?.abort(); 
-      setTimeout(() => { recognitionRef.current?.start(); }, 100);
-    } catch {}
-
+    // Avoid speaking a wake acknowledgement over an active recognizer. TTS will
+    // safely pause recognition and resume it when finished.
     auraSpeak("I'm listening.");
   }, [auraSpeak]);
 
@@ -876,6 +823,9 @@ const AuraAssistant: React.FC = () => {
     isListeningRef.current = false;
     stopRequestedRef.current = true;
     try { recognitionRef.current?.abort(); } catch {}
+    isSpeakingRef.current = false;
+    ignoreMicRef.current = false;
+    try { window.speechSynthesis.cancel(); } catch {}
     setStatusText("SYSTEM ONLINE");
   }, []);
 
@@ -884,8 +834,13 @@ const AuraAssistant: React.FC = () => {
       const cleaned = command.trim().replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
       
       if (!cleaned || cleaned.length < 2) return;
+      const now = Date.now();
+      if (commandInFlightRef.current || now - lastAcceptedAtRef.current < 900) return;
+      commandInFlightRef.current = true;
+      lastAcceptedAtRef.current = now;
 
       if (!isOnline) {
+        commandInFlightRef.current = false;
         setStatusText("OFFLINE");
         setTranscriptText("No internet connection. Try again when you're back online.");
         setCommandDetails({
@@ -913,7 +868,9 @@ const AuraAssistant: React.FC = () => {
       }
 
       try {
-        processCommand({
+        // Stop capture immediately after accepting a final command.
+        try { recognitionRef.current?.stop(); } catch {}
+        Promise.resolve(processCommand({
           cmd: cleaned,
           auraDatabase,
           setStatusText,
@@ -922,13 +879,19 @@ const AuraAssistant: React.FC = () => {
           auraSpeak,
           setEmbeddedVideo,
           stopMic,
-        }).then(() => {
+        })).then(() => {
           setUserProfile(getUserProfile());
 
           const all = getReminders().filter((r) => r.active);
           setPendingAlarms(all.sort((a, b) => a.time - b.time));
           
-          fetchTokenUsage(); 
+          fetchTokenUsage();
+        }).catch((error) => {
+          console.error("Aura command failed:", error);
+          setStatusText("COMMAND ERROR");
+          setTranscriptText("Unable to process this command. Please try again.");
+        }).finally(() => {
+          commandInFlightRef.current = false;
         });
         
         if (!isMobile) {
@@ -939,6 +902,7 @@ const AuraAssistant: React.FC = () => {
         }
 
       } catch (error) {
+        commandInFlightRef.current = false;
         setStatusText("COMMAND ERROR");
         setTranscriptText("Unable to process this command. Please try again.");
       }
@@ -1064,8 +1028,8 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
-        if (isSpeakingRef.current) {
-          return; 
+        if (isSpeakingRef.current || ignoreMicRef.current || commandInFlightRef.current) {
+          return;
         }
 
         if (interim && mountedRef.current) {
@@ -1073,8 +1037,9 @@ const AuraAssistant: React.FC = () => {
         }
 
         finalCommands.forEach((cmd) => {
-          if (cmd !== lastCommandTextRef.current && cmd.length > 1) {
-            lastCommandTextRef.current = cmd; 
+          const normalized = cmd.toLowerCase().replace(/\s+/g, " ").trim();
+          if (normalized !== lastCommandTextRef.current && cmd.length > 1 && !commandInFlightRef.current) {
+            lastCommandTextRef.current = normalized; 
             
             if (mountedRef.current) {
               setTranscriptText(`"${cmd}"`); 
@@ -1083,7 +1048,7 @@ const AuraAssistant: React.FC = () => {
             runCommand(cmd);       
             
             setTimeout(() => {
-              if (lastCommandTextRef.current === cmd) lastCommandTextRef.current = "";
+              if (lastCommandTextRef.current === normalized) lastCommandTextRef.current = "";
             }, 4000);
           }
         });
@@ -1112,25 +1077,21 @@ const AuraAssistant: React.FC = () => {
       };
 
       recognition.onend = () => {
-        const mode = micModeRef.current;
-        
-        if ((mode === "standby" || mode === "active") && !stopRequestedRef.current) {
-          try {
-            setTimeout(() => {
-              if (micModeRef.current !== "off" && !stopRequestedRef.current) {
-                 try { recognition.start(); } catch(e) {}
-              }
-            }, 300);
-          } catch (e) {
-            console.error("Mic auto-restart failed:", e);
-          }
-        } else {
+        if (isSpeakingRef.current || ignoreMicRef.current) return;
+        const shouldRestart = !stopRequestedRef.current &&
+          (micModeRef.current === "standby" || micModeRef.current === "active" || isListeningRef.current);
+        if (!shouldRestart) {
           setStatusText((previous: string) =>
-            previous === "LISTENING" || previous === "STANDBY"
-              ? "SYSTEM ONLINE"
-              : previous
+            previous === "LISTENING" || previous === "STANDBY" ? "SYSTEM ONLINE" : previous
           );
+          return;
         }
+        if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = window.setTimeout(() => {
+          if (isSpeakingRef.current || ignoreMicRef.current || stopRequestedRef.current) return;
+          if (!(micModeRef.current === "standby" || micModeRef.current === "active" || isListeningRef.current)) return;
+          try { recognition.start(); } catch { /* recognizer may already be starting */ }
+        }, 350);
       };
 
       recognitionRef.current = recognition;
@@ -1147,23 +1108,6 @@ const AuraAssistant: React.FC = () => {
     };
   }, [setupSpeechRecognition]);
 
-  useEffect(() => {
-    if (!handsFree) return;
-    
-    const watchdog = setInterval(() => {
-        if (micModeRef.current !== "off" && !stopRequestedRef.current && !isSpeakingRef.current) {
-            try {
-                if (recognitionRef.current) {
-                    recognitionRef.current.start(); 
-                }
-            } catch (e) {
-                // Ignore InvalidStateError
-            }
-        }
-    }, 2000);
-
-    return () => clearInterval(watchdog);
-  }, [handsFree]);
 
   const startHandsFree = useCallback(() => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
@@ -1180,13 +1124,14 @@ const AuraAssistant: React.FC = () => {
     wakeCooldownRef.current = false;
     
     setupSpeechRecognition(window);
-
+    stopRequestedRef.current = false;
+    enterStandbyMode();
     try {
-      recognitionRef.current.start();
-      enterStandbyMode();
+      recognitionRef.current?.start();
       auraSpeak("Hands free mode active. Say Aura, wake up.");
     } catch (err) {
       setStatusText("MIC UNAVAILABLE");
+      setTranscriptText("Allow microphone access, then try starting hands-free mode again.");
     }
   }, [setupSpeechRecognition, enterStandbyMode, auraSpeak]);
 
