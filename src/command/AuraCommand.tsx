@@ -11,7 +11,8 @@ import {
   saveUserProfile,
   clearUserMemory,
 } from './AuraConversation';
-import { setReminder } from './AuraReminders'; // ★ NEW IMPORT
+import { setReminder } from './AuraReminders';
+import { getWeather } from './AuraWeather'; // ★ Weather feature
 
 interface CommandDetails {
   title: string;
@@ -19,6 +20,8 @@ interface CommandDetails {
   match: string;
   type: string;
   data: any;
+  weatherIcon?: any; // ★ Allows passing the SVG icon to the UI
+  skipModal?: boolean; // ★ NEW: Tells the UI not to open the pop-up on error
 }
 
 interface CommandProps {
@@ -228,13 +231,71 @@ export const processCommand = async ({
       }
     }
 
-    // ★ FUZZY MATCH FIX: Catch partial commands for specific personal questions
+    // ★ FUZZY MATCH FIX
     if (/\b(girlfriend|girl friend|kasintahan)\b/i.test(normalized) && /\b(juanito|tamboong|juan)\b/i.test(normalized)) {
       return await respond("Her name is Rizalyn Uy. She is the girlfriend of Juanito Tamboong.", {
         title: "Personal Info",
         category: "System Info",
         data: "Her name is Rizalyn Uy. She is the girlfriend of Juanito Tamboong.",
       });
+    }
+
+    // ★★★ WEATHER ★★★
+    if (
+      /\b(weather|forecast|temperature|how (hot|cold)|is it (going to|gonna) rain|will it rain|rain today|humidity)\b/i.test(normalized)
+    ) {
+      setStatusText("CHECKING WEATHER...");
+
+      // ★ NEW: Let the user know Aura is looking it up right now
+      await Promise.resolve(auraSpeak("Just a moment, let me check the weather for you."));
+
+      let cityQuery = "";
+
+      const cityPatterns = [
+        /\b(?:weather|forecast|temperature|humidity)\s+(?:in|at|for)\s+(.+?)(?:\s+(?:today|tomorrow|right now|now|please|currently))?$/i,
+        /\b(?:in|at|for)\s+(.+?)\s+(?:weather|forecast|temperature)\b/i,
+        /\bhow (?:hot|cold) is (?:it )?(?:in|at)\s+(.+?)(?:\s+(?:today|right now|now))?$/i,
+        /\bis it (?:going to|gonna) rain (?:in|at)\s+(.+?)(?:\s+(?:today|tomorrow))?$/i,
+      ];
+
+      for (const pattern of cityPatterns) {
+        const m = normalized.match(pattern);
+        if (m && m[1]) {
+          cityQuery = m[1]
+            .replace(/\b(today|tomorrow|right now|now|please|the|current|currently)\b/gi, "")
+            .replace(/[?.!]+$/g, "")
+            .trim();
+          if (cityQuery) break;
+        }
+      }
+
+      // 1. Fetch the weather data silently in the background
+      const result = await getWeather(cityQuery || undefined);
+
+      // 2. Update the dashboard UI text immediately
+      setCommandDetails({
+        title: result.success ? `Weather — ${result.location}` : "Weather",
+        category: "Environment",
+        match: result.success ? "100%" : "0%",
+        type: "text",
+        data: result.markdown,
+        weatherIcon: result.weatherIcon,
+        skipModal: !result.success, // ★ NEW: Skip pop-up if weather fails
+      });
+
+      setTranscriptText(result.message);
+
+      if (result.success) {
+        addUserTurn(originalCommand);
+        addAssistantTurn(result.message);
+      }
+
+      // 3. Aura speaks the full weather report out loud
+      await Promise.resolve(auraSpeak(result.message));
+
+      setStatusText(result.success ? "SYSTEM ONLINE" : "WEATHER ERROR");
+
+      return result.message;
     }
 
     // 4. CHECK DATABASE
@@ -377,7 +438,6 @@ export const processCommand = async ({
       ? `\nHere is a list of facts you remember about the user:\n- ${profile.facts.join("\n- ")}\n` 
       : "";
 
-    // ★ FIXED PROMPT: Injected the creator identity AND personal facts into the AI instructions.
     let promptWithContext = "";
     if (history) {
       promptWithContext = 

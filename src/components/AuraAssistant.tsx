@@ -52,6 +52,7 @@ interface CommandDetails {
   match: string;
   type: string;
   data: any;
+  weatherIcon?: any; // Allows passing the SVG icon to the UI
 }
 
 interface HistoryItem {
@@ -848,19 +849,22 @@ const AuraAssistant: React.FC = () => {
           auraSpeak,
           setEmbeddedVideo,
           stopMic,
-        }).then(() => {
+        }).then((resultMessage) => {
           setUserProfile(getUserProfile());
 
           const all = getReminders().filter((r) => r.active);
           setPendingAlarms(all.sort((a, b) => a.time - b.time));
-        });
 
-        if (!isMobile) {
-          setTimeout(() => {
-            setManualOpen(false);
-            setShowResponseModal(true);
-          }, 300);
-        }
+          // ★ ONLY POP UP IF THERE IS A RESPONSE AND IT'S NOT EMPTY
+          if (!isMobile && resultMessage && resultMessage.trim().length > 0) {
+            
+            // Wait 1.2 seconds AFTER Aura finishes speaking before showing the pop-up
+            setTimeout(() => {
+              setManualOpen(false);
+              setShowResponseModal(true);
+            }, 1200); 
+          }
+        });
 
       } catch (error) {
         setStatusText("COMMAND ERROR");
@@ -1166,31 +1170,44 @@ const AuraAssistant: React.FC = () => {
     }
   }, [bootStage, startHandsFree]);
 
+  // ===== FIX: Modal Auto-Close Logic =====
   useEffect(() => {
-    if (!showResponseModal || isMobile) return;
-    if (manualOpen) return;
+    if (!showResponseModal || isMobile || manualOpen) return;
+
+    let isCancelled = false;
 
     const checkSpeechAndClose = () => {
-      if (!window.speechSynthesis.speaking && !isSpeakingRef.current) {
-        if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+      if (isCancelled) return;
 
-        autoCloseTimeoutRef.current = setTimeout(() => {
-          if (!manualOpen) {
-            setShowResponseModal(false);
-          }
-        }, 2500);
-      } else {
+      // Check if Aura is STILL speaking
+      if (window.speechSynthesis.speaking || isSpeakingRef.current) {
+        // Still talking? Check again in 500ms
         setTimeout(checkSpeechAndClose, 500);
+        return;
       }
+
+      // Aura is done speaking. Start the countdown to close.
+      // Weather gets 8 seconds to read, others get 4 seconds.
+      const delay = commandDetails.category === "Environment" ? 8000 : 4000;
+
+      if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+      
+      autoCloseTimeoutRef.current = setTimeout(() => {
+        if (!manualOpen) {
+          setShowResponseModal(false);
+        }
+      }, delay);
     };
 
+    // Start checking 1 second after the modal opens
     const initialDelay = setTimeout(checkSpeechAndClose, 1000);
 
     return () => {
+      isCancelled = true;
       clearTimeout(initialDelay);
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
     };
-  }, [showResponseModal, isMobile, manualOpen]);
+  }, [showResponseModal, isMobile, manualOpen, commandDetails.category]);
 
   const handlePopOut = useCallback(async () => {
     const browser = window as any;
@@ -1398,6 +1415,12 @@ const AuraAssistant: React.FC = () => {
           RESPONSE DATA (CLICK TO EXPAND)
         </div>
         <div className="aura-markdown-container">
+          {/* WEATHER ICON IN SIDEBAR PREVIEW */}
+          {commandDetails.category === "Environment" && commandDetails.weatherIcon && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
+              {commandDetails.weatherIcon}
+            </div>
+          )}
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {resultText || "No response data returned."}
           </ReactMarkdown>
@@ -1558,7 +1581,13 @@ const AuraAssistant: React.FC = () => {
                 {commandDetails.type === "video" && Array.isArray(commandDetails.data) ? (
                   renderResult()
                 ) : (
-                  <div className="aura-markdown-container">
+                  <div className={`aura-markdown-container ${commandDetails.category === "Environment" ? "aura-weather-grid" : ""}`}>
+                    {/* WEATHER ICON IN MODAL */}
+                    {commandDetails.category === "Environment" && commandDetails.weatherIcon && (
+                      <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px" }}>
+                        {commandDetails.weatherIcon}
+                      </div>
+                    )}
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {(typeof commandDetails.data === "string" ? commandDetails.data : JSON.stringify(commandDetails.data, null, 2)) || "No response data returned."}
                     </ReactMarkdown>

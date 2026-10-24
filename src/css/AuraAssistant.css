@@ -53,13 +53,11 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
    CUSTOM SCROLLBAR (THEME MATCH)
    ========================================================= */
 
-/* Firefox */
 * {
   scrollbar-width: thin;
   scrollbar-color: #39305c transparent;
 }
 
-/* Chrome, Edge, Safari */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -121,7 +119,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 
 /* =========================================================
-   OFFLINE BANNER (Floating Pill Design)
+   OFFLINE BANNER
    ========================================================= */
 
 .aura-offline-banner {
@@ -140,10 +138,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(239, 68, 68, 0.4);
   border-radius: 50px;
-  box-shadow: 
-    0 10px 30px rgba(0, 0, 0, 0.5), 
-    0 0 20px rgba(239, 68, 68, 0.15),
-    inset 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(239, 68, 68, 0.15), inset 0 1px rgba(255, 255, 255, 0.05);
   color: #fee2e2;
   font-family: var(--aura-font);
   animation: auraOfflineSlideDown 300ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -182,7 +177,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   margin-left: 4px;
 }
 
-/* Red dot override for offline header status */
 .aura-live-dot.offline {
   background: #ef4444 !important;
   box-shadow: 0 0 12px rgba(239, 68, 68, 0.85) !important;
@@ -347,7 +341,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 
 /* =========================================================
-   COMMAND ARCHIVE (LEFT) - FIXED LENGTH & TRUNCATION
+   COMMAND ARCHIVE (LEFT)
    ========================================================= */
 
 .aura-sidebar, .aura-results { 
@@ -358,7 +352,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   overflow: hidden;
 }
 
-/* Ensure sidebar doesn't push past screen */
 .aura-sidebar {
   max-height: calc(100vh - 120px);
 }
@@ -413,14 +406,13 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-archive-heading { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 12px; color: var(--aura-muted); font-family: var(--aura-display); font-size: 8px; letter-spacing: 0.12em; }
 .aura-archive-heading span:last-child { color: var(--aura-violet); }
 
-/* FIX: Constrained max-height so it doesn't stretch endlessly */
 .aura-history-list { 
   display: flex; 
   flex: 1; 
   flex-direction: column; 
   gap: 7px; 
   min-height: 0; 
-  max-height: 400px; /* Prevents endless stretching */
+  max-height: 400px; 
   overflow-x: hidden; 
   overflow-y: auto; 
   padding-right: 3px; 
@@ -444,7 +436,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-history-index { display: grid; flex-shrink: 0; place-items: center; width: 29px; height: 29px; border: 1px solid rgba(139, 92, 246, 0.16); border-radius: 8px; background: rgba(139, 92, 246, 0.07); color: #9c8fc1; font-family: var(--aura-display); font-size: 9px; }
 .aura-history-copy { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
 
-/* FIX: Truncate long text gracefully */
 .aura-history-copy strong { 
   overflow: hidden; 
   color: #d9d3f1; 
@@ -588,22 +579,10 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     inset 0 0 45px rgba(59, 130, 246, 0.1);
   animation: auraStandbyPulse 3.5s ease-in-out infinite;
 }
-.orb-standby .aura-orb-ring-one {
-  border-left-color: rgba(103, 232, 249, 0.4);
-  border-right-color: rgba(167, 139, 250, 0.4);
-  animation-duration: 22s;
-}
-.orb-standby .aura-orb-ring-two {
-  border-top-color: rgba(103, 232, 249, 0.35);
-  border-bottom-color: rgba(232, 121, 249, 0.3);
-  animation-duration: 28s;
-}
-.orb-standby .aura-orb-cross-one {
-  animation: auraStandbyBlink 2.4s ease-in-out infinite;
-}
-.orb-standby .aura-orb-cross-two {
-  animation: auraStandbyBlink 2.4s ease-in-out infinite 1.2s;
-}
+.orb-standby .aura-orb-ring-one { border-left-color: rgba(103, 232, 249, 0.4); border-right-color: rgba(167, 139, 250, 0.4); animation-duration: 22s; }
+.orb-standby .aura-orb-ring-two { border-top-color: rgba(103, 232, 249, 0.35); border-bottom-color: rgba(232, 121, 249, 0.3); animation-duration: 28s; }
+.orb-standby .aura-orb-cross-one { animation: auraStandbyBlink 2.4s ease-in-out infinite; }
+.orb-standby .aura-orb-cross-two { animation: auraStandbyBlink 2.4s ease-in-out infinite 1.2s; }
 @keyframes auraStandbyPulse {
   0%, 100% {
     box-shadow:
@@ -774,7 +753,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   color: #21183c;
 }
 
-/* Light mode scrollbar adjustments */
 .aura-light ::-webkit-scrollbar-thumb {
   background-color: #cbd5e1;
 }
@@ -788,19 +766,12 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-offline-banner {
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  box-shadow: 
-    0 10px 30px rgba(139, 92, 246, 0.15), 
-    0 0 20px rgba(239, 68, 68, 0.1);
+  box-shadow: 0 10px 30px rgba(139, 92, 246, 0.15), 0 0 20px rgba(239, 68, 68, 0.1);
   color: #7f1d1d;
 }
 
-.aura-light .aura-offline-banner-text strong {
-  color: #b91c1c;
-}
-
-.aura-light .aura-offline-banner-pulse {
-  color: #b91c1c;
-}
+.aura-light .aura-offline-banner-text strong { color: #b91c1c; }
+.aura-light .aura-offline-banner-pulse { color: #b91c1c; }
 
 .aura-light .aura-header {
   background: rgba(255, 255, 255, 0.65);
@@ -840,7 +811,6 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-orb-ring-two { border-top-color: var(--aura-blue); border-bottom-color: var(--aura-pink); }
 .aura-light .aura-orb-grid { background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, 0.1) 0deg 0.5deg, transparent 0.5deg 18deg); border-color: rgba(139, 92, 246, 0.15); }
 
-/* ★ NEW — light mode standby overrides */
 .aura-light .orb-standby {
   border-color: rgba(139, 92, 246, 0.45);
   box-shadow:
@@ -849,14 +819,8 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     0 0 40px rgba(139, 92, 246, 0.18),
     inset 0 0 35px rgba(139, 92, 246, 0.12);
 }
-.aura-light .orb-standby .aura-orb-ring-one {
-  border-left-color: rgba(59, 130, 246, 0.5);
-  border-right-color: rgba(139, 92, 246, 0.5);
-}
-.aura-light .orb-standby .aura-orb-ring-two {
-  border-top-color: rgba(59, 130, 246, 0.45);
-  border-bottom-color: rgba(232, 121, 249, 0.4);
-}
+.aura-light .orb-standby .aura-orb-ring-one { border-left-color: rgba(59, 130, 246, 0.5); border-right-color: rgba(139, 92, 246, 0.5); }
+.aura-light .orb-standby .aura-orb-ring-two { border-top-color: rgba(59, 130, 246, 0.45); border-bottom-color: rgba(232, 121, 249, 0.4); }
 
 .aura-light .aura-search-box { background: rgba(255, 255, 255, 0.7); border-color: rgba(139, 92, 246, 0.2); color: #6b628a; }
 .aura-light .aura-search-input { background: #ffffff; border-color: rgba(139, 92, 246, 0.3); color: #21183c; }
@@ -874,14 +838,12 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .aura-light .aura-command-tip { background: rgba(139, 92, 246, 0.04); border-color: rgba(139, 92, 246, 0.15); }
 .aura-light .aura-command-tip p { color: #6b628a; }
 
-/* ★ FIXED: Notification Panel Light Mode Readability */
 .aura-light .aura-notification { 
   background: #ffffff; 
   color: #21183c; 
   box-shadow: 0 20px 60px rgba(139, 92, 246, 0.15); 
 }
 
-/* Make all labels, text, and spans readable */
 .aura-light .aura-notification label,
 .aura-light .aura-notification p,
 .aura-light .aura-notification span,
@@ -889,21 +851,14 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   color: #4c3d6b;
 }
 
-/* Status color overrides for readability */
-.aura-light .aura-notification span[style*="var(--aura-cyan)"] {
-  color: #0891b2 !important; 
-}
-.aura-light .aura-notification span[style*="var(--aura-violet)"] {
-  color: #7c3aed !important;
-}
+.aura-light .aura-notification span[style*="var(--aura-cyan)"] { color: #0891b2 !important; }
+.aura-light .aura-notification span[style*="var(--aura-violet)"] { color: #7c3aed !important; }
 
-/* Token usage box background fix */
 .aura-light .aura-notification div[style*="background: rgba(139, 92, 246, 0.1)"] {
   background: rgba(139, 92, 246, 0.05) !important;
   border-color: rgba(139, 92, 246, 0.2) !important;
 }
 
-/* Dropdown styling */
 .aura-light .aura-notification select {
   background-color: #ffffff !important;
   color: #21183c !important;
@@ -1013,15 +968,8 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions { gap: 2px; }
   .aura-header-actions .aura-icon-button { width: 32px; height: 32px; }
 
-  .aura-offline-banner {
-    padding: 8px 16px;
-    gap: 10px;
-  }
-  .aura-offline-banner-text {
-    white-space: normal;
-    font-size: 11px;
-    line-height: 1.4;
-  }
+  .aura-offline-banner { padding: 8px 16px; gap: 10px; }
+  .aura-offline-banner-text { white-space: normal; font-size: 11px; line-height: 1.4; }
 
   .aura-dashboard { 
     display: flex; 
@@ -1076,9 +1024,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
     border-top: 1px solid rgba(167, 139, 250, 0.1);
   }
 
-  .aura-footer span:last-child {
-    display: none;
-  }
+  .aura-footer span:last-child { display: none; }
 
   .aura-notification {
     position: fixed;
@@ -1096,10 +1042,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .aura-header-actions .aura-icon-button { width: 27px; height: 32px; }
   .aura-brand h1 { font-size: 11px; letter-spacing: 0.05em; }
 
-  .aura-center {
-    min-height: auto;
-    height: auto;
-  }
+  .aura-center { min-height: auto; height: auto; }
 
   .aura-orb { width: min(170px, 55vw); }
   .aura-greeting h2 { font-size: 20px; }
@@ -1107,13 +1050,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 
   .aura-core-stage { padding: 10px 10px 20px; }
 
-  .aura-notification {
-    top: 70px;
-    left: 8px;
-    right: 8px;
-    padding: 14px;
-    max-height: calc(100vh - 90px);
-  }
+  .aura-notification { top: 70px; left: 8px; right: 8px; padding: 14px; max-height: calc(100vh - 90px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1252,29 +1189,13 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 
 /* Light Mode Markdown Overrides */
-.aura-light .aura-markdown-container {
-  color: #30274b;
-}
-.aura-light .aura-markdown-container strong {
-  color: var(--aura-purple);
-}
-.aura-light .aura-markdown-container em {
-  color: #21183c;
-}
-.aura-light .aura-markdown-container code {
-  background: rgba(139, 92, 246, 0.1);
-  color: var(--aura-purple);
-}
-.aura-light .aura-markdown-container pre {
-  background: rgba(139, 92, 246, 0.05);
-}
-.aura-light .aura-markdown-container pre code {
-  color: #30274b;
-}
-.aura-light .aura-markdown-container blockquote {
-  background: rgba(139, 92, 246, 0.08);
-  color: #6b628a;
-}
+.aura-light .aura-markdown-container { color: #30274b; }
+.aura-light .aura-markdown-container strong { color: var(--aura-purple); }
+.aura-light .aura-markdown-container em { color: #21183c; }
+.aura-light .aura-markdown-container code { background: rgba(139, 92, 246, 0.1); color: var(--aura-purple); }
+.aura-light .aura-markdown-container pre { background: rgba(139, 92, 246, 0.05); }
+.aura-light .aura-markdown-container pre code { color: #30274b; }
+.aura-light .aura-markdown-container blockquote { background: rgba(139, 92, 246, 0.08); color: #6b628a; }
 
 /* =========================================================
    SMOOTH MODAL ANIMATIONS
@@ -1286,12 +1207,106 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 }
 
 @keyframes auraModalPop {
-  0% { 
-    opacity: 0; 
-    transform: scale(0.92) translateY(20px); 
-  }
-  100% { 
-    opacity: 1; 
-    transform: scale(1) translateY(0); 
+  0% { opacity: 0; transform: scale(0.92) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* =========================================================
+   ★ NEW: WEATHER MODAL CARD GRID
+   ========================================================= */
+
+/* This targets ONLY the Weather lists when we apply the wrapper class */
+.aura-weather-grid ul {
+  display: grid;
+  grid-template-columns: 1fr 1fr; 
+  gap: 12px;
+  list-style: none !important; 
+  padding: 0 !important;
+  margin: 15px 0 20px 0 !important;
+}
+
+.aura-weather-grid li {
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 200ms ease;
+  margin: 0 !important;
+}
+
+.aura-weather-grid li:hover {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Bold labels inside the weather cards */
+.aura-weather-grid li strong {
+  color: var(--aura-violet);
+  font-family: var(--aura-display);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Weather Section Headers */
+.aura-weather-grid h1,
+.aura-weather-grid h2,
+.aura-weather-grid h3,
+.aura-weather-grid h4 {
+  font-family: var(--aura-display);
+  color: #c4b5fd;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 20px 0 10px 0;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Glowing dot before headers */
+.aura-weather-grid h1::before,
+.aura-weather-grid h2::before,
+.aura-weather-grid h3::before,
+.aura-weather-grid h4::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--aura-cyan);
+  box-shadow: 0 0 8px var(--aura-cyan);
+}
+
+/* Light Mode Overrides */
+.aura-light .aura-weather-grid li {
+  background: rgba(139, 92, 246, 0.04);
+  border-color: rgba(139, 92, 246, 0.15);
+}
+.aura-light .aura-weather-grid li:hover {
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+.aura-light .aura-weather-grid li strong {
+  color: #7c3aed;
+}
+.aura-light .aura-weather-grid h1,
+.aura-light .aura-weather-grid h2,
+.aura-light .aura-weather-grid h3,
+.aura-light .aura-weather-grid h4 {
+  color: #21183c;
+}
+
+/* Mobile Responsive: Stack them in 1 column */
+@media (max-width: 760px) {
+  .aura-weather-grid ul {
+    grid-template-columns: 1fr; 
+    gap: 8px;
   }
 }
