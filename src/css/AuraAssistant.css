@@ -1188,6 +1188,8 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   border-radius: 0 8px 8px 0;
 }
 
+
+
 /* Light Mode Markdown Overrides */
 .aura-light .aura-markdown-container { color: #30274b; }
 .aura-light .aura-markdown-container strong { color: var(--aura-purple); }

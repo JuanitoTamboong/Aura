@@ -1904,10 +1904,25 @@ const AuraAssistant: React.FC = () => {
                 <span id="statusText">{statusText}</span>
               </div>
 
-              <button type="button" id="micBtn" className={`aura-mic-button ${micMode === "active" ? "is-listening" : ""}`} onClick={toggleMic}>
-                {micMode === "active" ? <FaStop /> : <FaMicrophone />}
+              <button 
+                type="button" 
+                id="micBtn" 
+                className={`aura-mic-button ${isListening ? "is-listening" : ""}`} 
+                onClick={toggleMic}
+                style={{
+                  background: isListening 
+                    ? "linear-gradient(110deg, #dc2626, #ef4444 55%, #b91c1c)" 
+                    : "",
+                  borderColor: isListening ? "rgba(248, 113, 113, 0.6)" : "",
+                  boxShadow: isListening 
+                    ? "0 8px 28px rgba(220, 38, 38, 0.4), inset 0 1px rgba(255, 255, 255, 0.2)" 
+                    : "",
+                  animation: isListening ? "auraMicPulse 1.5s infinite" : "none"
+                }}
+              >
+                {isListening ? <FaStop /> : <FaMicrophone />}
                 <span>
-                  {micMode === "active" ? "END SESSION"
+                  {isListening ? "STOP LISTENING"
                    : micMode === "standby" ? "WAKE NOW"
                    : "INITIATE VOICE"}
                 </span>
