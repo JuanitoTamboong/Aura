@@ -81,6 +81,10 @@ const WAKE_WORDS = /\b(aur+a|aura|hey aura|okay aura|wake up|wake up aura|aura w
 const HISTORY_STORAGE_KEY = "aura_history";
 const WORKSPACE_STORAGE_KEY = "aura_workspace_messages";
 
+// Utility function for guaranteed unique IDs in chat
+const generateId = (prefix: string) =>
+  `${prefix}-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(36).substring(2)}`;
+
 const AuraAssistant: React.FC = () => {
   const [bootStage, setBootStage] = useState<BootStage>("splash");
 
@@ -141,7 +145,6 @@ const AuraAssistant: React.FC = () => {
       return [];
     }
   });
-  const chatIdRef = useRef(0);
   const activeAssistantMsgIdRef = useRef<string | null>(null);
   
   // ── Mute Guard Ref ───────────────────────────────────────
@@ -901,8 +904,8 @@ const AuraAssistant: React.FC = () => {
             "Local commands (time, date, saved memory, opening apps) may still work.",
         });
 
-        const userId = `u-${++chatIdRef.current}`;
-        const assistantId = `a-${++chatIdRef.current}`;
+        const userId = generateId("u");
+        const assistantId = generateId("a");
         setChatMessages((prev) => [
           ...prev,
           { id: userId, role: "user", content: cleaned, timestamp: Date.now() },
@@ -932,8 +935,8 @@ const AuraAssistant: React.FC = () => {
 
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
 
-      const userId = `u-${++chatIdRef.current}`;
-      const assistantId = `a-${++chatIdRef.current}`;
+      const userId = generateId("u");
+      const assistantId = generateId("a");
       activeAssistantMsgIdRef.current = assistantId;
 
       setChatMessages((prev) => [
