@@ -1,0 +1,350 @@
+.aura-vault {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: linear-gradient(160deg, #0a0819 0%, #080714 55%, #0c0a22 100%);
+  color: var(--aura-text);
+  display: flex;
+  flex-direction: column;
+  animation: auraWsIn 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: var(--aura-font);
+}
+
+.aura-vault-light {
+  background: linear-gradient(160deg, #f5f3ff 0%, #eae6fa 100%);
+  color: #21183c;
+}
+
+/* ── Header & Search ────────────────────────────────────── */
+.aura-vault-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--aura-border);
+  background: rgba(13, 11, 30, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.aura-vault-light .aura-vault-header {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(139, 92, 246, 0.15);
+}
+
+.aura-vault-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--aura-violet);
+}
+
+.aura-vault-title h2 {
+  margin: 0;
+  font-family: var(--aura-display);
+  font-size: 18px;
+  letter-spacing: 0.1em;
+}
+
+.aura-vault-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.aura-vault-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(8, 7, 20, 0.5);
+  border: 1px solid var(--aura-border);
+  color: var(--aura-muted);
+}
+
+.aura-vault-light .aura-vault-search-wrap {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.aura-vault-search-wrap input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--aura-text);
+  font-size: 13px;
+  width: 150px;
+}
+
+.aura-vault-light .aura-vault-search-wrap input { color: #21183c; }
+
+.aura-vault-close {
+  background: transparent;
+  border: none;
+  color: var(--aura-muted);
+  font-size: 22px;
+  cursor: pointer;
+  transition: color 180ms;
+}
+.aura-vault-close:hover { color: var(--aura-violet); }
+
+/* ── Upload Area ────────────────────────────────────────── */
+.aura-vault-upload {
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.aura-upload-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(196, 181, 253, 0.4);
+  background: linear-gradient(110deg, #5b21b6, #4338ca 55%, #1d4ed8);
+  color: white;
+  font-family: var(--aura-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(91, 33, 182, 0.4);
+  transition: all 180ms;
+}
+.aura-upload-btn:hover:not(:disabled) {
+  filter: brightness(1.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(91, 33, 182, 0.6);
+}
+.aura-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Grid Container ─────────────────────────────────────── */
+.aura-vault-grid-container {
+  flex: 1;
+  padding: 0 24px 24px;
+  overflow-y: auto;
+}
+
+.aura-vault-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+/* ── Individual Media Card ──────────────────────────────── */
+.aura-vault-item {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--aura-border);
+  background: rgba(13, 11, 30, 0.6);
+  cursor: pointer;
+  transition: transform 200ms, border-color 200ms, box-shadow 200ms;
+  display: flex;
+  flex-direction: column;
+}
+
+.aura-vault-light .aura-vault-item {
+  background: #ffffff;
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
+.aura-vault-item:hover {
+  transform: translateY(-4px);
+  border-color: var(--aura-violet);
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.2);
+}
+
+.aura-vault-thumb {
+  width: 100%;
+  aspect-ratio: 4/3;
+  background: #000;
+  overflow: hidden;
+}
+
+.aura-vault-thumb img,
+.aura-vault-video video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 300ms;
+}
+
+.aura-vault-item:hover .aura-vault-thumb img {
+  transform: scale(1.05);
+}
+
+.aura-vault-video { position: relative; width: 100%; height: 100%; }
+.aura-vault-play-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.4);
+  color: white;
+  font-size: 28px;
+  pointer-events: none;
+}
+
+.aura-vault-info {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aura-vault-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--aura-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aura-vault-light .aura-vault-name { color: #21183c; }
+
+.aura-vault-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--aura-muted);
+  font-family: var(--aura-display);
+  letter-spacing: 0.05em;
+}
+
+/* ── Delete Button ──────────────────────────────────────── */
+.aura-vault-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(239, 68, 68, 0.9);
+  border: none;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: white;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 200ms, transform 200ms, background 200ms;
+  z-index: 10;
+}
+.aura-vault-item:hover .aura-vault-delete { opacity: 1; transform: scale(1); }
+.aura-vault-delete:hover { background: #dc2626; }
+
+/* ── Empty / Loading State ──────────────────────────────── */
+.aura-vault-empty {
+  text-align: center;
+  margin-top: 40px;
+  color: var(--aura-muted);
+  font-family: var(--aura-display);
+  letter-spacing: 0.1em;
+}
+.aura-vault-light .aura-vault-empty { color: #6b628a; }
+
+/* ── Full-Screen Lightbox ───────────────────────────────── */
+.aura-vault-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(5, 3, 15, 0.95);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  animation: auraBackdropIn 200ms ease;
+}
+
+.aura-vault-lightbox-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: rgba(13, 11, 30, 0.8);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.aura-vault-lightbox-header h3 {
+  margin: 0;
+  color: #fff;
+  font-family: var(--aura-font);
+  font-size: 16px;
+}
+
+.aura-lightbox-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.aura-lightbox-actions a,
+.aura-lightbox-actions button {
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: var(--aura-violet);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 18px;
+  text-decoration: none;
+  transition: background 180ms, color 180ms;
+}
+.aura-lightbox-actions a:hover,
+.aura-lightbox-actions button:hover {
+  background: rgba(139, 92, 246, 0.3);
+  color: #fff;
+}
+
+.aura-vault-lightbox-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.aura-vault-lightbox-content img,
+.aura-vault-lightbox-content video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Mobile Responsive ──────────────────────────────────── */
+@media (max-width: 760px) {
+  .aura-vault-header { padding: 12px 16px; flex-direction: column; align-items: flex-start; gap: 12px; }
+  .aura-vault-header-actions { width: 100%; justify-content: space-between; }
+  .aura-vault-search-wrap { flex: 1; }
+  .aura-vault-search-wrap input { width: 100%; }
+  
+  .aura-vault-upload { padding: 16px; }
+  .aura-upload-btn { width: 100%; justify-content: center; }
+  
+  .aura-vault-grid-container { padding: 0 16px 16px; }
+  .aura-vault-grid { 
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); 
+    gap: 12px; 
+  }
+
+  .aura-vault-delete {
+    opacity: 1;
+    transform: scale(1);
+    background: rgba(239, 68, 68, 0.95);
+    width: 28px;
+    height: 28px;
+  }
+
+  .aura-vault-lightbox-header { padding: 12px 16px; }
+  .aura-vault-lightbox-header h3 { font-size: 14px; max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aura-lightbox-actions a, .aura-lightbox-actions button { width: 34px; height: 34px; font-size: 15px; }
+  .aura-vault-lightbox-content { padding: 12px; }
+}

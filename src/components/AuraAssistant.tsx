@@ -21,6 +21,7 @@ import {
   FaBell,
   FaChevronDown,
   FaComments,
+  FaImages, // Added for Media Vault
 } from "react-icons/fa6";
 
 import { FaRegMoon } from "react-icons/fa";
@@ -47,6 +48,7 @@ import alarmSound from "../assets/sound/alarm-clock.mp3";
 import SplashScreen from "./SplashScreen";
 import WelcomeScreen from "./WelcomeScreen";
 import AuraWorkspace, { type ChatMessage } from "./AuraWorkspace";
+import AuraMediaVault from "./AuraMediaVault"; // Added Media Vault
 
 interface CommandDetails {
   title: string;
@@ -147,6 +149,9 @@ const AuraAssistant: React.FC = () => {
   });
   const activeAssistantMsgIdRef = useRef<string | null>(null);
   
+  // ── Media Vault State ────────────────────────────────────
+  const [vaultOpen, setVaultOpen] = useState(false);
+
   // ── Mute Guard Ref ───────────────────────────────────────
   const isWorkspaceOpenRef = useRef(false);
 
@@ -1865,6 +1870,15 @@ const AuraAssistant: React.FC = () => {
 
           <button
             type="button"
+            className={`aura-icon-button ${vaultOpen ? "is-active" : ""}`}
+            title="Media Vault"
+            onClick={() => setVaultOpen(true)}
+          >
+            <FaImages />
+          </button>
+
+          <button
+            type="button"
             className="aura-icon-button"
             title="System Logs"
             onClick={() => setShowLogs((value) => !value)}
@@ -2492,6 +2506,13 @@ const AuraAssistant: React.FC = () => {
           isListening={isListening}
           lightMode={lightMode}
           transcriptText={transcriptText}
+        />
+      )}
+
+      {vaultOpen && (
+        <AuraMediaVault
+          onClose={() => setVaultOpen(false)}
+          lightMode={lightMode}
         />
       )}
     </div>
