@@ -1,0 +1,714 @@
+/* =========================================================
+   AURA WORKSPACE — CHAT MODE
+   ========================================================= */
+
+.aura-workspace {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(91, 33, 182, 0.18), transparent 50%),
+    linear-gradient(160deg, #0a0819 0%, #080714 55%, #0c0a22 100%);
+  color: var(--aura-text);
+  animation: auraWsIn 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: var(--aura-font);
+}
+
+@keyframes auraWsIn {
+  from { opacity: 0; transform: scale(0.98) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+
+.aura-ws-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--aura-border);
+  background: rgba(13, 11, 30, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  flex-shrink: 0;
+}
+
+.aura-ws-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.aura-ws-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: linear-gradient(145deg, rgba(124, 58, 237, 0.25), rgba(37, 99, 235, 0.15));
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.15);
+  flex-shrink: 0;
+}
+
+.aura-ws-icon-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--aura-violet);
+  box-shadow: 0 0 14px rgba(167, 139, 250, 0.9);
+  animation: auraLive 2s ease-in-out infinite;
+}
+
+.aura-ws-header h2 {
+  margin: 0;
+  font-family: var(--aura-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.aura-ws-header p {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: var(--aura-muted);
+  font-family: var(--aura-display);
+  letter-spacing: 0.05em;
+}
+
+.aura-ws-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aura-ws-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--aura-muted);
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.aura-ws-icon-btn:hover:not(:disabled) {
+  border-color: var(--aura-border-bright);
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--aura-violet);
+}
+
+.aura-ws-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── Message Stream ─────────────────────────────────────── */
+
+.aura-ws-stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 28px 22px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  scroll-behavior: smooth;
+}
+
+.aura-ws-stream::-webkit-scrollbar { width: 8px; }
+.aura-ws-stream::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 10px;
+}
+.aura-ws-stream::-webkit-scrollbar-thumb:hover { background: var(--aura-violet); }
+
+/* ── Empty state ────────────────────────────────────────── */
+
+.aura-ws-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  min-height: 0;
+}
+
+.aura-ws-empty-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 110px;
+  height: 110px;
+  flex-shrink: 0; /* Prevents the flex container from squishing it */
+  margin-bottom: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  background: radial-gradient(circle at 50% 45%, rgba(75, 38, 150, 0.4), rgba(20, 15, 51, 0.7) 60%, rgba(7, 6, 19, 0.95) 90%);
+  box-shadow: 0 0 0 8px rgba(139, 92, 246, 0.04), 0 0 50px rgba(124, 58, 237, 0.25);
+}
+
+/* Fixed: Logo styling instead of text span */
+.aura-ws-empty-logo {
+  position: absolute;
+  z-index: 2;
+  width: 45%;
+  height: 45%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px rgba(167, 139, 250, 0.65)) drop-shadow(0 0 25px rgba(59, 130, 246, 0.32));
+  pointer-events: none;
+}
+
+.aura-ws-empty-ring {
+  position: absolute;
+  inset: 14%;
+  border: 1px dashed rgba(167, 139, 250, 0.25);
+  border-radius: 50%;
+  animation: auraRotate 30s linear infinite;
+}
+
+.aura-ws-empty-ring-two {
+  inset: 22%;
+  border-style: solid;
+  border-color: rgba(103, 232, 249, 0.15);
+  animation: auraRotateReverse 20s linear infinite;
+}
+
+.aura-ws-empty h3 {
+  margin: 0 0 8px;
+  font-family: var(--aura-display);
+  font-size: 22px;
+  letter-spacing: 0.04em;
+}
+
+.aura-ws-empty p {
+  margin: 0 0 28px;
+  color: var(--aura-muted);
+  font-size: 14px;
+  max-width: 340px;
+}
+
+.aura-ws-suggestions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-width: 720px;
+  margin-top: 8px;
+}
+
+.aura-ws-suggestion {
+  padding: 14px 16px;
+  border: 1px solid var(--aura-border);
+  border-radius: 12px;
+  background: rgba(139, 92, 246, 0.05);
+  color: var(--aura-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.aura-ws-suggestion:hover {
+  border-color: var(--aura-border-bright);
+  background: rgba(139, 92, 246, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.12);
+}
+
+/* ── Messages ───────────────────────────────────────────── */
+
+.aura-ws-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  animation: auraMsgIn 260ms ease;
+}
+
+@keyframes auraMsgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.aura-ws-msg-user { flex-direction: row-reverse; }
+
+.aura-ws-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: linear-gradient(145deg, rgba(124, 58, 237, 0.3), rgba(37, 99, 235, 0.15));
+  color: var(--aura-violet);
+  font-family: var(--aura-display);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.aura-ws-avatar-user {
+  border-color: rgba(103, 232, 249, 0.3);
+  background: linear-gradient(145deg, rgba(14, 116, 144, 0.3), rgba(37, 99, 235, 0.15));
+  color: var(--aura-cyan);
+}
+
+/* Added: Avatar Logo sizing */
+.aura-ws-avatar-img {
+  width: 65%;
+  height: 65%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.5));
+}
+
+.aura-ws-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  max-width: calc(100% - 50px);
+}
+
+.aura-ws-msg-user .aura-ws-bubble-wrap { align-items: flex-end; }
+
+.aura-ws-bubble {
+  padding: 13px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--aura-border);
+  background: rgba(13, 11, 30, 0.75);
+  color: var(--aura-text);
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.aura-ws-msg-user .aura-ws-bubble {
+  background: linear-gradient(135deg, rgba(91, 33, 182, 0.55), rgba(67, 56, 202, 0.5));
+  border-color: rgba(167, 139, 250, 0.35);
+  border-bottom-right-radius: 4px;
+}
+
+.aura-ws-msg-assistant .aura-ws-bubble {
+  border-bottom-left-radius: 4px;
+}
+
+.aura-ws-bubble p { margin: 0; }
+.aura-ws-bubble p + p { margin-top: 10px; }
+
+.aura-ws-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-family: var(--aura-display);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--aura-subtle);
+}
+
+.aura-ws-meta-dot { color: var(--aura-violet); }
+.aura-ws-meta-cat { color: var(--aura-violet); }
+
+/* ── Markdown inside bubbles ────────────────────────────── */
+
+.aura-ws-markdown {
+  color: inherit;
+  font-family: var(--aura-font);
+  line-height: 1.7;
+}
+
+.aura-ws-markdown h1,
+.aura-ws-markdown h2,
+.aura-ws-markdown h3,
+.aura-ws-markdown h4 {
+  font-family: var(--aura-display);
+  color: var(--aura-violet);
+  margin: 1em 0 0.4em;
+  font-size: 1.05em;
+  letter-spacing: 0.03em;
+}
+
+.aura-ws-markdown p { margin: 0 0 0.7em; }
+.aura-ws-markdown p:last-child { margin-bottom: 0; }
+
+.aura-ws-markdown ul,
+.aura-ws-markdown ol {
+  margin: 0.4em 0 0.7em;
+  padding-left: 1.4em;
+}
+
+.aura-ws-markdown li { margin-bottom: 0.3em; }
+
+.aura-ws-markdown strong { color: var(--aura-cyan); font-weight: 700; }
+
+.aura-ws-markdown a {
+  color: var(--aura-blue);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--aura-blue);
+}
+.aura-ws-markdown a:hover { color: var(--aura-cyan); }
+
+.aura-ws-markdown code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--aura-cyan);
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.aura-ws-markdown pre {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--aura-border);
+  background: rgba(0, 0, 0, 0.4);
+  overflow-x: auto;
+  margin: 0.7em 0;
+}
+
+.aura-ws-markdown pre code {
+  background: transparent;
+  padding: 0;
+  color: var(--aura-text);
+}
+
+.aura-ws-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  font-size: 0.9em;
+}
+
+.aura-ws-markdown th,
+.aura-ws-markdown td {
+  padding: 8px;
+  border: 1px solid var(--aura-border);
+  text-align: left;
+}
+
+.aura-ws-markdown th {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--aura-violet);
+  font-family: var(--aura-display);
+  font-size: 0.85em;
+}
+
+.aura-ws-markdown blockquote {
+  margin: 0.7em 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--aura-violet);
+  border-radius: 0 8px 8px 0;
+  background: rgba(139, 92, 246, 0.06);
+  color: var(--aura-muted);
+  font-style: italic;
+}
+
+/* ── Streaming cursor ───────────────────────────────────── */
+
+.aura-ws-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  background: var(--aura-cyan);
+  border-radius: 1px;
+  animation: auraWsBlink 1s steps(2) infinite;
+}
+
+@keyframes auraWsBlink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ── Typing indicator ───────────────────────────────────── */
+
+.aura-ws-typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 16px 18px;
+}
+
+.aura-ws-typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--aura-violet);
+  animation: auraWsTyping 1.4s ease-in-out infinite;
+}
+
+.aura-ws-typing span:nth-child(2) { animation-delay: 0.2s; }
+.aura-ws-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes auraWsTyping {
+  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-4px); }
+}
+
+/* ── Live transcript chip ───────────────────────────────── */
+
+.aura-ws-transcript {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(103, 232, 249, 0.3);
+  background: rgba(103, 232, 249, 0.06);
+  color: var(--aura-cyan);
+  font-size: 13px;
+  flex-shrink: 0;
+  animation: auraMsgIn 200ms ease;
+}
+
+.aura-ws-transcript-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--aura-cyan);
+  box-shadow: 0 0 10px var(--aura-cyan);
+  animation: auraLive 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+/* ── Composer ───────────────────────────────────────────── */
+
+.aura-ws-composer {
+  flex-shrink: 0;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--aura-border);
+  background: rgba(13, 11, 30, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.aura-ws-composer-inner {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--aura-border-bright);
+  border-radius: 16px;
+  background: rgba(8, 7, 20, 0.7);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.aura-ws-composer-inner:focus-within {
+  border-color: rgba(167, 139, 250, 0.6);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12), 0 8px 30px rgba(91, 33, 182, 0.15);
+}
+
+.aura-ws-input {
+  flex: 1;
+  min-height: 24px;
+  max-height: 160px;
+  padding: 10px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--aura-text);
+  font-family: var(--aura-font);
+  font-size: 15px;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+}
+
+.aura-ws-input::placeholder { color: var(--aura-subtle); }
+
+.aura-ws-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.aura-ws-send {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.aura-ws-send {
+  background: linear-gradient(135deg, #5b21b6, #4338ca 55%, #1d4ed8);
+  border-color: rgba(196, 181, 253, 0.4);
+  color: white;
+  box-shadow: 0 4px 16px rgba(91, 33, 182, 0.3);
+}
+
+.aura-ws-send:hover:not(:disabled) {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(91, 33, 182, 0.45);
+}
+
+.aura-ws-send:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.aura-ws-send.is-stop {
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.aura-ws-footer-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 900px;
+  margin: 10px auto 0;
+  padding: 0 4px;
+  font-size: 10px;
+  color: var(--aura-subtle);
+  font-family: var(--aura-display);
+  letter-spacing: 0.04em;
+}
+
+.aura-ws-footer-key { white-space: nowrap; }
+
+.aura-ws-footer-key kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 2px;
+  border-radius: 4px;
+  border: 1px solid var(--aura-border);
+  background: rgba(139, 92, 246, 0.08);
+  font-family: monospace;
+  font-size: 9px;
+  color: var(--aura-muted);
+}
+
+/* ── Light mode ─────────────────────────────────────────── */
+
+.aura-workspace-light {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(196, 181, 253, 0.35), transparent 50%),
+    linear-gradient(160deg, #f5f3ff 0%, #eae6fa 100%);
+  color: #21183c;
+}
+
+.aura-workspace-light .aura-ws-header {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(139, 92, 246, 0.15);
+}
+
+.aura-workspace-light .aura-ws-header h2 { color: #21183c; }
+.aura-workspace-light .aura-ws-header p { color: #6b628a; }
+
+.aura-workspace-light .aura-ws-icon {
+  background: linear-gradient(145deg, rgba(196, 181, 253, 0.5), rgba(147, 197, 253, 0.3));
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.aura-workspace-light .aura-ws-icon-btn:hover:not(:disabled) {
+  background: rgba(139, 92, 246, 0.08);
+  color: var(--aura-purple);
+}
+
+.aura-workspace-light .aura-ws-bubble {
+  background: #ffffff;
+  border-color: rgba(139, 92, 246, 0.15);
+  color: #30274b;
+}
+
+.aura-workspace-light .aura-ws-msg-user .aura-ws-bubble {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: white;
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+.aura-workspace-light .aura-ws-markdown strong { color: #7c3aed; }
+.aura-workspace-light .aura-ws-markdown h1,
+.aura-workspace-light .aura-ws-markdown h2,
+.aura-workspace-light .aura-ws-markdown h3,
+.aura-workspace-light .aura-ws-markdown h4 { color: #7c3aed; }
+.aura-workspace-light .aura-ws-markdown code { background: rgba(139, 92, 246, 0.1); color: #7c3aed; }
+.aura-workspace-light .aura-ws-markdown pre { background: rgba(139, 92, 246, 0.05); }
+.aura-workspace-light .aura-ws-markdown pre code { color: #30274b; }
+.aura-workspace-light .aura-ws-markdown blockquote { background: rgba(139, 92, 246, 0.08); color: #6b628a; }
+
+.aura-workspace-light .aura-ws-suggestion {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(139, 92, 246, 0.15);
+  color: #30274b;
+}
+
+.aura-workspace-light .aura-ws-suggestion:hover {
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.aura-workspace-light .aura-ws-composer {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(139, 92, 246, 0.15);
+}
+
+.aura-workspace-light .aura-ws-composer-inner {
+  background: #ffffff;
+  border-color: rgba(139, 92, 246, 0.25);
+}
+
+.aura-workspace-light .aura-ws-input { color: #21183c; }
+.aura-workspace-light .aura-ws-input::placeholder { color: #8a82a6; }
+
+/* ── Mobile ─────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .aura-ws-header { padding: 10px 14px; }
+  .aura-ws-header h2 { font-size: 13px; }
+  .aura-ws-header p { font-size: 10px; }
+  .aura-ws-icon { width: 34px; height: 34px; }
+  .aura-ws-icon-btn { width: 32px; height: 32px; }
+
+  .aura-ws-stream { padding: 18px 12px 8px; gap: 18px; }
+  .aura-ws-bubble { padding: 11px 13px; font-size: 14px; }
+  .aura-ws-bubble-wrap { max-width: calc(100% - 44px); }
+  .aura-ws-avatar { width: 30px; height: 30px; font-size: 12px; }
+
+  .aura-ws-composer { padding: 10px 12px 14px; }
+  .aura-ws-composer-inner { padding: 6px 6px 6px 12px; }
+  .aura-ws-input { font-size: 14px; padding: 8px 0; }
+  .aura-ws-send { width: 36px; height: 36px; }
+
+  .aura-ws-footer-hint { font-size: 9px; }
+  .aura-ws-footer-key { display: none; }
+
+  /* Fix the mobile squishing and prevent logo cut-off */
+  .aura-ws-empty {
+    justify-content: flex-start;
+    padding-top: 40px;
+    overflow-y: auto;
+  }
+  
+  .aura-ws-empty-orb { width: 88px; height: 88px; margin-bottom: 20px; }
+  .aura-ws-empty h3 { font-size: 18px; }
+  .aura-ws-empty p { font-size: 13px; margin-bottom: 20px; }
+  .aura-ws-suggestions { grid-template-columns: 1fr; }
+}

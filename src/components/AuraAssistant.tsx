@@ -20,6 +20,7 @@ import {
   FaPowerOff,
   FaBell,
   FaChevronDown,
+  FaComments,
 } from "react-icons/fa6";
 
 import { FaRegMoon } from "react-icons/fa";
@@ -29,7 +30,6 @@ import remarkGfm from "remark-gfm";
 
 import "../css/AuraAssistant.css";
 import auraLogo from "../assets/images/Aura-Logo-fix.webp";
-// FIX 1: Removed static JSON import to reduce initial JS payload
 import { processCommand } from "../command/AuraCommand";
 import { AuraApiError } from "../api/aura-api";
 import { clearConversation, getUserProfile } from "../command/AuraConversation";
@@ -46,6 +46,7 @@ import alarmSound from "../assets/sound/alarm-clock.mp3";
 
 import SplashScreen from "./SplashScreen";
 import WelcomeScreen from "./WelcomeScreen";
+import AuraWorkspace, { type ChatMessage } from "./AuraWorkspace";
 
 interface CommandDetails {
   title: string;
@@ -78,6 +79,7 @@ const WAIT_WORDS = /\b(wait|hold on|hold up|hold it|pause|one moment|one sec|giv
 const WAKE_WORDS = /\b(aur+a|aura|hey aura|okay aura|wake up|wake up aura|aura wake up|hey aur+a)\b/i;
 
 const HISTORY_STORAGE_KEY = "aura_history";
+const WORKSPACE_STORAGE_KEY = "aura_workspace_messages";
 
 const AuraAssistant: React.FC = () => {
   const [bootStage, setBootStage] = useState<BootStage>("splash");
@@ -127,6 +129,24 @@ const AuraAssistant: React.FC = () => {
   const [pendingAlarms, setPendingAlarms] = useState<Reminder[]>([]);
   const [isAlarmRinging, setIsAlarmRinging] = useState(false);
 
+  // ── Workspace / chat state ──────────────────────────────
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const raw = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const chatIdRef = useRef(0);
+  const activeAssistantMsgIdRef = useRef<string | null>(null);
+  
+  // ── Mute Guard Ref ───────────────────────────────────────
+  const isWorkspaceOpenRef = useRef(false);
+
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioPlaybackRef = useRef<HTMLAudioElement | null>(null);
   const speechGenerationRef = useRef<number>(0);
@@ -163,17 +183,15 @@ const AuraAssistant: React.FC = () => {
   const replyTokenRef = useRef(0);
   const lastPartialReplyRef = useRef("");
 
-  // ── mirror of selectedVoiceName so auraSpeak can stay stable ─
+  // ── mirrors ──────────────────────────────────────────────
   const selectedVoiceNameRef = useRef(selectedVoiceName);
-
-  // ── ref to latest toggleMic for PiP ──────────────────────────
+  const commandDetailsRef = useRef(commandDetails);
   const toggleMicRef = useRef<() => void>(() => {});
 
   const wasOnlineRef = useRef<boolean>(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
 
-  // FIX 2: Store dynamically loaded JSON here
   const auraDatabaseRef = useRef<any>(null);
 
   const [history, setHistory] = useState<HistoryItem[]>(() => {
@@ -196,8 +214,6 @@ const AuraAssistant: React.FC = () => {
     }
   });
 
-  // FIX 3: Do not request Mic permissions on initial load.
-  // It will be requested only when the user clicks the Mic button.
   const requestAudioPermissions = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -220,6 +236,29 @@ const AuraAssistant: React.FC = () => {
       console.warn("Failed to persist Aura history:", error);
     }
   }, [history]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        WORKSPACE_STORAGE_KEY,
+        JSON.stringify(chatMessages.slice(-100))
+      );
+    } catch (error) {
+      console.warn("Failed to persist Aura workspace messages:", error);
+    }
+  }, [chatMessages]);
+
+  useEffect(() => {
+    commandDetailsRef.current = commandDetails;
+  }, [commandDetails]);
+
+  // Update the mute guard when workspace opens/closes & kill active speech
+  useEffect(() => {
+    isWorkspaceOpenRef.current = workspaceOpen;
+    if (workspaceOpen) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
+  }, [workspaceOpen]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -469,7 +508,6 @@ const AuraAssistant: React.FC = () => {
 
       const isLightPiP = targetWindow.document.body.classList.contains("aura-light-pip");
 
-      // FIX 4: Reduced particles from 240 to 60 to save CPU
       const particles = Array.from({ length: 60 }, (_, i) => ({
         angle: (i / 60) * Math.PI * 2,
         size: 0.8 + Math.random() * 1.4,
@@ -493,7 +531,6 @@ const AuraAssistant: React.FC = () => {
       const draw = () => {
         if (disposed) return;
 
-        // FIX 5: Pause animation if tab is hidden
         if (targetWindow.document.visibilityState === "hidden") {
           frame = targetWindow.requestAnimationFrame(draw);
           animRef.current = frame;
@@ -596,6 +633,9 @@ const AuraAssistant: React.FC = () => {
   }, [showResponseModal, startAnimation]);
 
   const auraSpeak = useCallback((text: string, overrideVoiceName?: string) => {
+    // FIX: Mute speech synthesis if the Workspace is currently open.
+    if (isWorkspaceOpenRef.current) return;
+
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
     const currentGeneration = ++speechGenerationRef.current;
@@ -807,7 +847,35 @@ const AuraAssistant: React.FC = () => {
     setStatusText("SYSTEM ONLINE");
   }, []);
 
-  // FIX 6: Make runCommand async, load JSON dynamically
+  const openWorkspace = useCallback(() => setWorkspaceOpen(true), []);
+  const closeWorkspace = useCallback(() => setWorkspaceOpen(false), []);
+
+  const clearWorkspace = useCallback(() => {
+    setChatMessages([]);
+    activeAssistantMsgIdRef.current = null;
+    try { localStorage.removeItem(WORKSPACE_STORAGE_KEY); } catch {}
+    clearConversation();
+  }, []);
+
+  const stopWorkspace = useCallback(() => {
+    try { inFlightControllerRef.current?.abort(); } catch {}
+    inFlightControllerRef.current = null;
+    replyTokenRef.current++;
+    try { window.speechSynthesis.cancel(); } catch {}
+
+    if (activeAssistantMsgIdRef.current) {
+      setChatMessages((prev) =>
+        prev.map((m) =>
+          m.id === activeAssistantMsgIdRef.current
+            ? { ...m, streaming: false, content: m.content || "Stopped." }
+            : m
+        )
+      );
+      activeAssistantMsgIdRef.current = null;
+    }
+    setStatusText("SYSTEM ONLINE");
+  }, []);
+
   const runCommand = useCallback(
     async (command: string) => {
       const cleaned = command.trim().replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
@@ -832,6 +900,23 @@ const AuraAssistant: React.FC = () => {
             "YouTube search, or web search will not work right now.\n\n" +
             "Local commands (time, date, saved memory, opening apps) may still work.",
         });
+
+        const userId = `u-${++chatIdRef.current}`;
+        const assistantId = `a-${++chatIdRef.current}`;
+        setChatMessages((prev) => [
+          ...prev,
+          { id: userId, role: "user", content: cleaned, timestamp: Date.now() },
+          {
+            id: assistantId,
+            role: "assistant",
+            content:
+              "**Aura is offline.** No internet connection — cloud commands are unavailable right now.",
+            timestamp: Date.now(),
+            streaming: false,
+            category: "Network Error",
+          },
+        ]);
+
         auraSpeak("I can't reach the network right now.");
         return;
       }
@@ -847,7 +932,23 @@ const AuraAssistant: React.FC = () => {
 
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
 
-      // FIX: Dynamically load DB if we don't have it yet
+      const userId = `u-${++chatIdRef.current}`;
+      const assistantId = `a-${++chatIdRef.current}`;
+      activeAssistantMsgIdRef.current = assistantId;
+
+      setChatMessages((prev) => [
+        ...prev,
+        { id: userId, role: "user", content: cleaned, timestamp: Date.now() },
+        {
+          id: assistantId,
+          role: "assistant",
+          content: "",
+          timestamp: Date.now(),
+          streaming: true,
+          category: "Processing…",
+        },
+      ]);
+
       if (!auraDatabaseRef.current) {
         try {
           const module = await import("../database/aura.json");
@@ -857,13 +958,19 @@ const AuraAssistant: React.FC = () => {
         }
       }
 
+      // FIX: If workspace is open, pass a silent dummy function to processCommand
+      // so the internal AI engine doesn't trigger voice synthesis.
+      const silentAuraSpeak = isWorkspaceOpenRef.current 
+        ? () => {} 
+        : auraSpeak;
+
       processCommand({
         cmd: cleaned,
         auraDatabase: auraDatabaseRef.current,
         setStatusText,
         setTranscriptText,
         setCommandDetails,
-        auraSpeak,
+        auraSpeak: silentAuraSpeak,
         setEmbeddedVideo,
         stopMic,
         signal: controller.signal,
@@ -871,16 +978,46 @@ const AuraAssistant: React.FC = () => {
           if (myToken !== replyTokenRef.current) return;
           lastPartialReplyRef.current = partial;
           setTranscriptText(partial);
+
+          const id = activeAssistantMsgIdRef.current;
+          if (id) {
+            setChatMessages((prev) =>
+              prev.map((m) =>
+                m.id === id ? { ...m, content: partial, streaming: true } : m
+              )
+            );
+          }
         },
       })
         .then((resultMessage) => {
-          if (myToken !== replyTokenRef.current) return; 
+          if (myToken !== replyTokenRef.current) return;
           setUserProfile(getUserProfile());
 
           const all = getReminders().filter((r) => r.active);
           setPendingAlarms(all.sort((a, b) => a.time - b.time));
 
-          if (!isMobile && resultMessage && resultMessage.trim().length > 0) {
+          const id = activeAssistantMsgIdRef.current;
+          if (id) {
+            const finalText =
+              resultMessage && resultMessage.trim()
+                ? resultMessage
+                : lastPartialReplyRef.current || "Done.";
+            setChatMessages((prev) =>
+              prev.map((m) =>
+                m.id === id
+                  ? {
+                      ...m,
+                      content: finalText,
+                      streaming: false,
+                      category: commandDetailsRef.current?.category ?? m.category,
+                    }
+                  : m
+              )
+            );
+            activeAssistantMsgIdRef.current = null;
+          }
+
+          if (!isMobile && !workspaceOpen && resultMessage && resultMessage.trim().length > 0) {
             setTimeout(() => {
               if (myToken !== replyTokenRef.current) return;
               setManualOpen(false);
@@ -893,12 +1030,28 @@ const AuraAssistant: React.FC = () => {
           if (myToken !== replyTokenRef.current) return;
           setStatusText("COMMAND ERROR");
           setTranscriptText("Unable to process this command. Please try again.");
+
+          if (activeAssistantMsgIdRef.current) {
+            setChatMessages((prev) =>
+              prev.map((m) =>
+                m.id === activeAssistantMsgIdRef.current
+                  ? {
+                      ...m,
+                      content: "⚠️ Unable to process that command. Please try again.",
+                      streaming: false,
+                      category: "Error",
+                    }
+                  : m
+              )
+            );
+            activeAssistantMsgIdRef.current = null;
+          }
         })
         .finally(() => {
           if (myToken === replyTokenRef.current) inFlightControllerRef.current = null;
         });
     },
-    [addHistory, auraSpeak, stopMic, isMobile, isOnline]
+    [addHistory, auraSpeak, stopMic, isMobile, isOnline, workspaceOpen]
   );
 
   const setupSpeechRecognition = useCallback(
@@ -1134,7 +1287,6 @@ const AuraAssistant: React.FC = () => {
     window.speechSynthesis.cancel();
     lastCommandTextRef.current = "";
 
-    // FIX 7: Request mic permissions only when clicked
     requestAudioPermissions();
 
     setupSpeechRecognition(window);
@@ -1190,6 +1342,7 @@ const AuraAssistant: React.FC = () => {
   }, [showResponseModal, isMobile, manualOpen, commandDetails.category]);
 
   const handlePopOut = useCallback(async () => {
+    // ... your existing PiP implementation ...
     const browser = window as any;
 
     if (!browser.documentPictureInPicture) {
@@ -1700,6 +1853,15 @@ const AuraAssistant: React.FC = () => {
 
           <button
             type="button"
+            className={`aura-icon-button ${workspaceOpen ? "is-active" : ""}`}
+            title="Open Workspace (chat mode)"
+            onClick={openWorkspace}
+          >
+            <FaComments />
+          </button>
+
+          <button
+            type="button"
             className="aura-icon-button"
             title="System Logs"
             onClick={() => setShowLogs((value) => !value)}
@@ -2058,6 +2220,7 @@ const AuraAssistant: React.FC = () => {
             )}
             {embeddedVideo && <p style={{ color: "var(--aura-cyan)" }}>• Embedded player active.</p>}
             {pipOpen && <p style={{ color: "var(--aura-cyan)" }}>• Floating Aura window active.</p>}
+            {workspaceOpen && <p style={{ color: "var(--aura-cyan)" }}>• Workspace (chat) active.</p>}
             {pendingAlarms.length > 0 && (
               <p style={{ color: "var(--aura-cyan)" }}>
                 • {pendingAlarms.length} alarm{pendingAlarms.length === 1 ? "" : "s"} scheduled.
@@ -2314,6 +2477,20 @@ const AuraAssistant: React.FC = () => {
         </span>
         <span>COMMAND ARCHIVE PERSISTS LOCALLY</span>
       </footer>
+
+      {workspaceOpen && (
+        <AuraWorkspace
+          messages={chatMessages}
+          onSend={(text) => runCommand(text)}
+          onStop={stopWorkspace}
+          onClear={clearWorkspace}
+          onClose={closeWorkspace}
+          isProcessing={statusText === "PROCESSING COMMAND"}
+          isListening={isListening}
+          lightMode={lightMode}
+          transcriptText={transcriptText}
+        />
+      )}
     </div>
   );
 };
