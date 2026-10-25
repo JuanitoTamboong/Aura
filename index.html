@@ -2,14 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="./src/assets/images/Aura-Logo.png" />
+    <link rel="icon" type="image/webp" href="./src/assets/images/Aura-Logo-fix.webp" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- SEO FIX: Added missing meta description -->
+    <meta name="description" content="Aura AI Neural Command Interface - Voice-powered AI assistant for commands, reminders, and web search." />
+    <meta name="theme-color" content="#080714" />
+    
     <title>Aura AI</title>
     
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PERFORMANCE FIX: Preconnect to Google Fonts to speed up the handshake -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     
-    <!-- NO TAILWIND CDN HERE -->
+    <!-- PERFORMANCE FIX: Load fonts asynchronously so they don't block the first paint -->
+    <link 
+      rel="stylesheet" 
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" 
+      media="print" 
+      onload="this.media='all'" 
+    />
+    <noscript>
+      <link 
+        rel="stylesheet" 
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" 
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>

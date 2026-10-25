@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import "../css/WelcomeScreen.css";
-import auraLogo from "../assets/images/Aura-Logo.png";
+import auraLogo from "../assets/images/Aura-Logo-fix.webp";
 
 interface WelcomeScreenProps {
   onComplete: () => void;

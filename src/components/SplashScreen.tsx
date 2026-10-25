@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import "../css/SplashScreen.css";
-import auraLogo from "../assets/images/Aura-Logo.png";
+import auraLogo from "../assets/images/Aura-Logo-fix.webp";
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -10,18 +10,23 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   const [bootText, setBootText] = useState("INITIALIZING CORE...");
   const [isFading, setIsFading] = useState(false);
   
-  // ★ NEW: Read the theme from local storage
   const [lightMode] = useState(() => {
     return localStorage.getItem("aura_light_mode") === "true";
   });
 
-  // --- 1. THE SOUND ENGINE ---
+  // THE SOUND ENGINE
   const playBootSound = () => {
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContext) return;
       
       const ctx = new AudioContext();
+      
+      // Resume context if browser suspended it due to autoplay policies
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
+
       const now = ctx.currentTime;
 
       const osc = ctx.createOscillator();
@@ -61,6 +66,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
   };
 
   useEffect(() => {
+    // Only attempt to play if user has interacted previously, or wait for click
     playBootSound();
 
     const handleInteraction = () => {
@@ -85,15 +91,16 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         setBootText(messages[currentIndex]);
         currentIndex++;
       }
-    }, 600);
+    }, 300); // Sped up text interval to match shorter timer
 
+    // REDUCED TIMERS TO FIX LCP (Largest Contentful Paint)
     const fadeTimer = setTimeout(() => {
       setIsFading(true);
-    }, 2500);
+    }, 1000); // Was 2500ms
 
     const completeTimer = setTimeout(() => {
       onComplete();
-    }, 3100);
+    }, 1500); // Was 3100ms
 
     return () => {
       clearInterval(textInterval);
@@ -104,7 +111,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     };
   }, [onComplete]);
 
-  // ★ NEW: Added conditional class here
   return (
     <div className={`splash-container ${lightMode ? "aura-light" : ""} ${isFading ? "fade-out" : ""}`}>
       <div className="splash-scanlines" />
@@ -113,7 +119,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         <div className="splash-logo-wrapper">
           <div className="splash-ring splash-ring-outer" />
           <div className="splash-ring splash-ring-inner" />
-          <img src={auraLogo} alt="Aura Logo" className="splash-logo" />
+          {/* Added fetchPriority and eager loading for LCP */}
+          <img src={auraLogo} alt="Aura Logo" className="splash-logo" fetchPriority="high" loading="eager" />
         </div>
 
         <h1 className="splash-title">AURA / AI</h1>

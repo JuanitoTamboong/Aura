@@ -28,8 +28,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import "../css/AuraAssistant.css";
-import auraLogo from "../assets/images/Aura-Logo.png";
-import auraDatabase from "../database/aura.json";
+import auraLogo from "../assets/images/Aura-Logo-fix.webp";
+// FIX 1: Removed static JSON import to reduce initial JS payload
 import { processCommand } from "../command/AuraCommand";
 import { AuraApiError } from "../api/aura-api";
 import { clearConversation, getUserProfile } from "../command/AuraConversation";
@@ -173,6 +173,9 @@ const AuraAssistant: React.FC = () => {
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
 
+  // FIX 2: Store dynamically loaded JSON here
+  const auraDatabaseRef = useRef<any>(null);
+
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     try {
       const saved = localStorage.getItem(HISTORY_STORAGE_KEY);
@@ -193,24 +196,22 @@ const AuraAssistant: React.FC = () => {
     }
   });
 
-  // Request OS-level DSP (Noise Suppression, Echo Cancellation, Auto Gain)
-  useEffect(() => {
-    const requestAudioPermissions = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            autoGainControl: true,
-            noiseSuppression: true,
-            echoCancellation: true,
-          },
-        });
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (err) {
-        console.warn("Mic permission or DSP request failed:", err);
-      }
-    };
-    requestAudioPermissions();
-  }, []);
+  // FIX 3: Do not request Mic permissions on initial load.
+  // It will be requested only when the user clicks the Mic button.
+  const requestAudioPermissions = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          autoGainControl: true,
+          noiseSuppression: true,
+          echoCancellation: true,
+        },
+      });
+      stream.getTracks().forEach((track) => track.stop());
+    } catch (err) {
+      console.warn("Mic permission or DSP request failed:", err);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -366,7 +367,6 @@ const AuraAssistant: React.FC = () => {
     };
   }, []);
 
-  // ── Initial greeting uses saved name ────────────────────────────
   useEffect(() => {
     const profile = getUserProfile();
     const name = profile.name && profile.name !== "Sir" ? profile.name : "operator";
@@ -395,7 +395,6 @@ const AuraAssistant: React.FC = () => {
   useEffect(() => { handsFreeRef.current = handsFree; }, [handsFree]);
   useEffect(() => { selectedVoiceNameRef.current = selectedVoiceName; }, [selectedVoiceName]);
 
-  // ── Voice loading (no cascade on selection change) ──────────────
   useEffect(() => {
     const loadVoices = () => {
       const allVoices = window.speechSynthesis.getVoices();
@@ -434,7 +433,6 @@ const AuraAssistant: React.FC = () => {
     };
   }, []);
 
-  // ── Unmount cleanup ─────────────────────────────────────────────
   useEffect(() => {
     return () => {
       mountedRef.current = false;
@@ -471,8 +469,9 @@ const AuraAssistant: React.FC = () => {
 
       const isLightPiP = targetWindow.document.body.classList.contains("aura-light-pip");
 
-      const particles = Array.from({ length: 240 }, (_, i) => ({
-        angle: (i / 240) * Math.PI * 2,
+      // FIX 4: Reduced particles from 240 to 60 to save CPU
+      const particles = Array.from({ length: 60 }, (_, i) => ({
+        angle: (i / 60) * Math.PI * 2,
         size: 0.8 + Math.random() * 1.4,
         speed: 0.7 + Math.random() * 0.6,
         offset: Math.random() * Math.PI * 2,
@@ -493,6 +492,13 @@ const AuraAssistant: React.FC = () => {
 
       const draw = () => {
         if (disposed) return;
+
+        // FIX 5: Pause animation if tab is hidden
+        if (targetWindow.document.visibilityState === "hidden") {
+          frame = targetWindow.requestAnimationFrame(draw);
+          animRef.current = frame;
+          return;
+        }
 
         ctx.clearRect(0, 0, width, height);
 
@@ -589,7 +595,6 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation]);
 
-  // ── auraSpeak: reads current voice from ref, so its identity is stable ──
   const auraSpeak = useCallback((text: string, overrideVoiceName?: string) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
@@ -680,11 +685,9 @@ const AuraAssistant: React.FC = () => {
       }, 800);
     };
 
-    // Chrome/Edge/Android silently drop speak() if cancel() happened in the same tick.
     setTimeout(doSpeak, 80);
   }, []);
 
-  // ── Electron alarm IPC ──────────────────────────────────────────
   useEffect(() => {
     if (bootStage !== "ready") return;
 
@@ -714,7 +717,6 @@ const AuraAssistant: React.FC = () => {
     }
   }, [bootStage, auraSpeak]);
 
-  // ── Online/offline transitions ──────────────────────────────────
   useEffect(() => {
     const wasOnline = wasOnlineRef.current;
     wasOnlineRef.current = isOnline;
@@ -805,9 +807,9 @@ const AuraAssistant: React.FC = () => {
     setStatusText("SYSTEM ONLINE");
   }, []);
 
-  // ── runCommand with single-flight and streaming ─────────────────
+  // FIX 6: Make runCommand async, load JSON dynamically
   const runCommand = useCallback(
-    (command: string) => {
+    async (command: string) => {
       const cleaned = command.trim().replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
       if (!cleaned || cleaned.length < 2) return;
 
@@ -845,9 +847,19 @@ const AuraAssistant: React.FC = () => {
 
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
 
+      // FIX: Dynamically load DB if we don't have it yet
+      if (!auraDatabaseRef.current) {
+        try {
+          const module = await import("../database/aura.json");
+          auraDatabaseRef.current = module.default;
+        } catch (err) {
+          console.error("Failed to load Aura DB:", err);
+        }
+      }
+
       processCommand({
         cmd: cleaned,
-        auraDatabase,
+        auraDatabase: auraDatabaseRef.current,
         setStatusText,
         setTranscriptText,
         setCommandDetails,
@@ -1122,6 +1134,9 @@ const AuraAssistant: React.FC = () => {
     window.speechSynthesis.cancel();
     lastCommandTextRef.current = "";
 
+    // FIX 7: Request mic permissions only when clicked
+    requestAudioPermissions();
+
     setupSpeechRecognition(window);
 
     try {
@@ -1135,10 +1150,8 @@ const AuraAssistant: React.FC = () => {
     }
   }, [setupSpeechRecognition, enterActiveMode, exitHandsFree]);
 
-  // Keep the ref up to date for PiP
   useEffect(() => { toggleMicRef.current = toggleMic; }, [toggleMic]);
 
-  // Restore hands-free state once
   useEffect(() => {
     if (bootStage !== "ready") return;
     const savedHandsFree = localStorage.getItem("aura_hands_free");
@@ -1146,7 +1159,6 @@ const AuraAssistant: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootStage]);
 
-  // Modal auto-close
   useEffect(() => {
     if (!showResponseModal || isMobile || manualOpen) return;
 
