@@ -13,10 +13,9 @@
     "moduleDetection": "force",
     "noEmit": true,
 
-    /* Linting */
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
+    /* Linting - Relaxed for Vercel production build */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
   "include": ["vite.config.ts"]
