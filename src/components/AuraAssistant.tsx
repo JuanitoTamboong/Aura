@@ -997,19 +997,21 @@ const AuraAssistant: React.FC = () => {
           }
         },
       })
-        .then((resultMessage) => {
+        .then((result: any) => { // <-- Change to any
           if (myToken !== replyTokenRef.current) return;
           setUserProfile(getUserProfile());
 
           const all = getReminders().filter((r) => r.active);
           setPendingAlarms(all.sort((a, b) => a.time - b.time));
 
+          // Check if result is the Media Object from Supabase
+          const isMediaResult = result && typeof result === 'object' && 'mediaItems' in result;
+          const finalText = isMediaResult 
+            ? result.text 
+            : (result && typeof result === 'string' && result.trim() ? result : lastPartialReplyRef.current || "Done.");
+
           const id = activeAssistantMsgIdRef.current;
           if (id) {
-            const finalText =
-              resultMessage && resultMessage.trim()
-                ? resultMessage
-                : lastPartialReplyRef.current || "Done.";
             setChatMessages((prev) =>
               prev.map((m) =>
                 m.id === id
@@ -1017,7 +1019,9 @@ const AuraAssistant: React.FC = () => {
                       ...m,
                       content: finalText,
                       streaming: false,
-                      category: commandDetailsRef.current?.category ?? m.category,
+                      // Attach the images to the message if they exist
+                      mediaItems: isMediaResult ? result.mediaItems : undefined,
+                      category: isMediaResult ? "Media Vault" : (commandDetailsRef.current?.category ?? m.category),
                     }
                   : m
               )
@@ -1025,7 +1029,7 @@ const AuraAssistant: React.FC = () => {
             activeAssistantMsgIdRef.current = null;
           }
 
-          if (!isMobile && !workspaceOpen && resultMessage && resultMessage.trim().length > 0) {
+          if (!isMediaResult && !isMobile && !workspaceOpen && finalText && finalText.trim().length > 0) {
             setTimeout(() => {
               if (myToken !== replyTokenRef.current) return;
               setManualOpen(false);

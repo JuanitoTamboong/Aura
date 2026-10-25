@@ -12,6 +12,8 @@ export interface ChatMessage {
   timestamp: number;
   streaming?: boolean;
   category?: string;
+  // 1. Added mediaItems so the chat can hold images/videos
+  mediaItems?: Array<{ url: string; type: "image" | "video" }>; 
 }
 
 interface AuraWorkspaceProps {
@@ -52,8 +54,6 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Auto-scroll to bottom when new messages arrive / streaming updates
-  // Using scrollTop directly instead of scrollIntoView prevents the mobile viewport
-  // from snapping all the way to the bottom and cutting off the top logo on mount.
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -198,6 +198,22 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
                       >
                         {msg.content || "…"}
                       </ReactMarkdown>
+
+                      {/* 2. Render Media Items (Images/Videos) inside the bubble */}
+                      {msg.mediaItems && msg.mediaItems.length > 0 && (
+                        <div className="aura-ws-media-grid">
+                          {msg.mediaItems.map((media, idx) => (
+                            <div key={idx} className="aura-ws-media-item">
+                              {media.type === "image" ? (
+                                <img src={media.url} alt="Aura Media" loading="lazy" />
+                              ) : (
+                                <video src={media.url} controls />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {msg.streaming && <span className="aura-ws-cursor" />}
                     </div>
                   ) : (

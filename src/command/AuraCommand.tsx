@@ -11,6 +11,8 @@ import {
 } from "./AuraConversation";
 import { setReminder } from "./AuraReminders";
 import { getWeather } from "./AuraWeather";
+// ⚠️ Make sure this path is correct based on where you moved your supabase-client file!
+import { supabase } from "../../supabase/supabase-client";
 
 interface CommandDetails {
   title: string; category: string; match: string;
@@ -37,7 +39,7 @@ export const processCommand = async ({
   cmd, auraDatabase, setStatusText, setTranscriptText,
   setCommandDetails, auraSpeak, stopMic, setEmbeddedVideo,
   signal, onPartialReply,
-}: CommandProps): Promise<string> => {
+}: CommandProps): Promise<any> => {
 
   const originalCommand = (cmd || "").trim();
   if (!originalCommand) { setStatusText("SYSTEM ONLINE"); return ""; }
@@ -158,6 +160,54 @@ export const processCommand = async ({
   };
 
   try {
+    // ── Supabase Media Vault Search ──────────────────────────────
+    const isAskingForMedia = /\b(show me|find my|get my|pic of|picture of|photo of|image of|where is)\b/i.test(normalized);
+
+    if (isAskingForMedia) {
+      setStatusText("SEARCHING MEDIA VAULT");
+      setTranscriptText("Looking through your Supabase storage...");
+      
+      // Extract the search term
+      const searchQuery = normalized
+        .replace(/show me|find my|get my|pic of|picture of|photo of|image of|where is|the|a|an|in a vault|in the vault|in vault/gi, "")
+        .trim();
+
+      if (searchQuery.length > 1) {
+        try {
+          const { data, error } = await supabase.storage.from("aura-media").list();
+          
+          if (!error && data) {
+            const matchedFiles = data.filter(file => 
+              file.name.toLowerCase().includes(searchQuery) && 
+              file.name !== ".emptyFolderPlaceholder"
+            );
+
+            if (matchedFiles.length > 0) {
+              const mediaItems = matchedFiles.map(file => {
+                const { data: { publicUrl } } = supabase.storage.from("aura-media").getPublicUrl(file.name);
+                const isVideo = file.name.match(/\.(mp4|webm|ogg|mov)$/i);
+                return { url: publicUrl, type: isVideo ? "video" : "image" };
+              });
+
+              setStatusText("MEDIA FOUND");
+              setTranscriptText(`Here is what I found for "${searchQuery}".`);
+              
+              // Return the object with mediaItems for the chat
+              return {
+                text: `I found **${matchedFiles.length}** file(s) matching "${searchQuery}":`,
+                mediaItems: mediaItems
+              };
+            } else {
+              setTranscriptText(`I couldn't find any files matching "${searchQuery}".`);
+              return { text: `I searched your Media Vault but couldn't find anything matching **"${searchQuery}"**.` };
+            }
+          }
+        } catch (err) {
+          console.error("Supabase search failed:", err);
+        }
+      }
+    }
+
     // ── Memory management ────────────────────────────────────────
     if (/\b(clear memory|clear my memory|forget everything|forget me|wipe memory|delete memory)\b/i.test(normalized)) {
       clearUserMemory();

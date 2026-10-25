@@ -150,7 +150,7 @@
   place-items: center;
   width: 110px;
   height: 110px;
-  flex-shrink: 0; /* Prevents the flex container from squishing it */
+  flex-shrink: 0;
   margin-bottom: 26px;
   border-radius: 50%;
   border: 1px solid rgba(139, 92, 246, 0.4);
@@ -158,7 +158,6 @@
   box-shadow: 0 0 0 8px rgba(139, 92, 246, 0.04), 0 0 50px rgba(124, 58, 237, 0.25);
 }
 
-/* Fixed: Logo styling instead of text span */
 .aura-ws-empty-logo {
   position: absolute;
   z-index: 2;
@@ -266,7 +265,6 @@
   color: var(--aura-cyan);
 }
 
-/* Added: Avatar Logo sizing */
 .aura-ws-avatar-img {
   width: 65%;
   height: 65%;
@@ -415,6 +413,31 @@
   background: rgba(139, 92, 246, 0.06);
   color: var(--aura-muted);
   font-style: italic;
+}
+
+/* ── Media Grid inside Chat ─────────────────────────────── */
+
+.aura-ws-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.aura-ws-media-item {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--aura-border);
+  background: #000;
+}
+
+.aura-ws-media-item img,
+.aura-ws-media-item video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 250px;
+  object-fit: cover;
 }
 
 /* ── Streaming cursor ───────────────────────────────────── */
@@ -711,4 +734,9 @@
   .aura-ws-empty h3 { font-size: 18px; }
   .aura-ws-empty p { font-size: 13px; margin-bottom: 20px; }
   .aura-ws-suggestions { grid-template-columns: 1fr; }
+
+  /* Media grid mobile tweaks */
+  .aura-ws-media-grid {
+    grid-template-columns: 1fr;
+  }
 }

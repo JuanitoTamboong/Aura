@@ -9,7 +9,7 @@ import {
   FaDownload,
   FaVideo
 } from "react-icons/fa6";
-import { supabase } from "../../supabase/supabase-cllient";
+import { supabase } from "../../supabase/supabase-client";
 import "../css/AuraMediaVault.css";
 
 const MEDIA_BUCKET = "aura-media";
