@@ -11,7 +11,6 @@ import {
 } from "./AuraConversation";
 import { setReminder } from "./AuraReminders";
 import { getWeather } from "./AuraWeather";
-// ⚠️ Make sure this path is correct based on where you moved your supabase-client file!
 import { supabase } from "../../supabase/supabase-client";
 
 interface CommandDetails {
@@ -30,22 +29,61 @@ interface CommandProps {
   setEmbeddedVideo?: (url: string | null) => void;
   signal?: AbortSignal;
   onPartialReply?: (partial: string) => void;
+  activeImageUrl?: string | null;
 }
 
 const turnsToMessages = (t: ConversationTurn[]): ChatMessage[] =>
   t.map((x) => ({ role: x.role, content: x.text }));
 
+// Compress and convert to Base64 text
+const compressAndEncodeImage = (url: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = url;
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject("Canvas not supported");
+
+      const MAX_WIDTH = 800;
+      const MAX_HEIGHT = 800;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height && width > MAX_WIDTH) {
+        height *= MAX_WIDTH / width;
+        width = MAX_WIDTH;
+      } else if (height > MAX_HEIGHT) {
+        width *= MAX_HEIGHT / height;
+        height = MAX_HEIGHT;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const base64 = canvas.toDataURL("image/jpeg", 0.7);
+      resolve(base64);
+    };
+
+    img.onerror = (err) => reject(err);
+  });
+};
+
 export const processCommand = async ({
   cmd, auraDatabase, setStatusText, setTranscriptText,
   setCommandDetails, auraSpeak, stopMic, setEmbeddedVideo,
   signal, onPartialReply,
+  activeImageUrl,
 }: CommandProps): Promise<any> => {
 
   const originalCommand = (cmd || "").trim();
   if (!originalCommand) { setStatusText("SYSTEM ONLINE"); return ""; }
   const lowerCmd = originalCommand.toLowerCase().trim();
 
-  // ── 0. STOP (does NOT wipe conversation memory) ──────────────────
+  // ── 0. STOP ──────────────────
   if (/\b(stop|quiet|cancel|shut up|nevermind|never mind|silence|abort|disregard)\b/.test(lowerCmd)) {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     stopMic();
@@ -59,7 +97,7 @@ export const processCommand = async ({
     return "Stopped.";
   }
 
-  // ── Wake word (ignore silently) ─────────────────────────────────
+  // ── Wake word ─────────────────────────────────────────────────
   if (/^(wake up|aura|hey aura|okay aura|wake up aura|hey aur+a)$/i.test(lowerCmd)) return "";
 
   // ── Wait ────────────────────────────────────────────────────────
@@ -72,7 +110,7 @@ export const processCommand = async ({
     return "";
   }
 
-  // ── Continue (streams a real continuation) ──────────────────────
+  // ── Continue ──────────────────────
   if (/\b(continue|go on|keep going|resume|tuloy mo)\b/.test(lowerCmd)) {
     const turns = getConversationTurns();
     if (turns.length === 0) {
@@ -107,7 +145,7 @@ export const processCommand = async ({
     return msg;
   }
 
-  // ── Alarms / reminders ──────────────────────────────────────────
+  // ── Alarms ──────────────────────────────────────────
   if (/\b(set\s+alarm|alarm|remind\s+me|reminder|wake\s+me|set\s+timer|timer)\b/i.test(lowerCmd)) {
     setStatusText("SETTING ALARM...");
     const result = setReminder(originalCommand);
@@ -160,52 +198,99 @@ export const processCommand = async ({
   };
 
   try {
-    // ── Supabase Media Vault Search ──────────────────────────────
-    const isAskingForMedia = /\b(show me|find my|get my|pic of|picture of|photo of|image of|where is)\b/i.test(normalized);
+    // ── SUPABASE MEDIA VAULT SEARCH ─────────────────
+    const cleanNormalized = normalized.replace(/[.,!?;:]/g, "").trim();
+    const isAskingForMedia = /\b(show me|find my|get my|send me|send the|send that|pic of|picture of|photo of|image of|where is)\b/i.test(cleanNormalized);
 
     if (isAskingForMedia) {
       setStatusText("SEARCHING MEDIA VAULT");
       setTranscriptText("Looking through your Supabase storage...");
-      
-      // Extract the search term
-      const searchQuery = normalized
-        .replace(/show me|find my|get my|pic of|picture of|photo of|image of|where is|the|a|an|in a vault|in the vault|in vault/gi, "")
+
+      // Strip filler words to isolate the actual file name (e.g., "korumi")
+      const searchQuery = cleanNormalized
+        .replace(/\b(can you|could you|would you|please|kindly|for me|show|me|find|my|get|send|the|that|this|pic|pictures?|photos?|images?|of|where|is|are|in|a|an|vault|media|from|file|files|uploaded)\b/gi, "")
+        .replace(/\s+/g, " ")
         .trim();
 
       if (searchQuery.length > 1) {
         try {
           const { data, error } = await supabase.storage.from("aura-media").list();
-          
-          if (!error && data) {
-            const matchedFiles = data.filter(file => 
-              file.name.toLowerCase().includes(searchQuery) && 
-              file.name !== ".emptyFolderPlaceholder"
+
+          if (error) {
+            console.error("Supabase list error:", error);
+            setStatusText("SYSTEM ONLINE");
+            return await respond(
+              `I couldn't reach your Media Vault right now.`,
+              { title: "Vault Error", category: "Media", match: "0%", data: error.message }
             );
+          }
+
+          if (data) {
+            // Split user query into distinct words (ignoring very short words)
+            const queryWords = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+            
+            const matchedFiles = data.filter(file => {
+              if (file.name === ".emptyFolderPlaceholder") return false;
+              const fileNameLower = file.name.toLowerCase();
+              
+              // If no distinct words, fallback to exact substring
+              if (queryWords.length === 0) return fileNameLower.includes(searchQuery.toLowerCase());
+              
+              // Match if the filename contains ANY of the keywords
+              return queryWords.some(word => fileNameLower.includes(word));
+            });
 
             if (matchedFiles.length > 0) {
               const mediaItems = matchedFiles.map(file => {
                 const { data: { publicUrl } } = supabase.storage.from("aura-media").getPublicUrl(file.name);
-                const isVideo = file.name.match(/\.(mp4|webm|ogg|mov)$/i);
+                const isVideo = /\.(mp4|webm|ogg|mov|mkv|avi)$/i.test(file.name);
                 return { url: publicUrl, type: isVideo ? "video" : "image" };
               });
 
               setStatusText("MEDIA FOUND");
+              const summary = `I found **${matchedFiles.length}** file(s) matching "${searchQuery}":`;
               setTranscriptText(`Here is what I found for "${searchQuery}".`);
+
+              addUserTurn(originalCommand);
+              addAssistantTurn(summary);
+              setCommandDetails({
+                title: `Media: ${searchQuery}`,
+                category: "Media Vault",
+                match: "100%",
+                type: "media",
+                data: summary,
+              });
               
-              // Return the object with mediaItems for the chat
-              return {
-                text: `I found **${matchedFiles.length}** file(s) matching "${searchQuery}":`,
-                mediaItems: mediaItems
-              };
-            } else {
-              setTranscriptText(`I couldn't find any files matching "${searchQuery}".`);
-              return { text: `I searched your Media Vault but couldn't find anything matching **"${searchQuery}"**.` };
+              await Promise.resolve(auraSpeak(`Here ${matchedFiles.length === 1 ? "it is" : "they are"}.`));
+              setStatusText("SYSTEM ONLINE");
+
+              // Return object with mediaItems for the UI to render
+              return { text: summary, mediaItems };
             }
+
+            // Nothing matched
+            setStatusText("SYSTEM ONLINE");
+            return await respond(
+              `I searched your Media Vault but couldn't find anything matching "${searchQuery}".`,
+              { title: "No Matches", category: "Media Vault", match: "0%", data: `No files contain "${searchQuery}".` }
+            );
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Supabase search failed:", err);
+          setStatusText("SYSTEM ONLINE");
+          return await respond(
+            `Something went wrong while searching the Media Vault.`,
+            { title: "Vault Error", category: "Media", match: "0%", data: err?.message ?? "Unknown error" }
+          );
         }
       }
+
+      // Query was too short / empty after stripping
+      setStatusText("SYSTEM ONLINE");
+      return await respond(
+        "What would you like me to find in your Media Vault?",
+        { title: "Awaiting Media Query", category: "Media Vault", data: "No search term detected." }
+      );
     }
 
     // ── Memory management ────────────────────────────────────────
@@ -431,7 +516,16 @@ export const processCommand = async ({
     const userMsg: ChatMessage = { role: "user", content: text };
     const messages = buildMessages([...history, userMsg], userCtx);
 
-    addUserTurn(originalCommand); // ← record once, here
+    // ── Inject image as a strict text string to bypass proxy 400 errors ─────────
+    if (activeImageUrl) {
+      messages.push({
+        role: "user",
+        content: `[SYSTEM NOTE: The user is referring to the image they just saw at this URL: ${activeImageUrl}. If you cannot view the URL directly, please ask the user to describe the image to you.]`
+      } as any);
+    }
+    // ────────────────────────────────────────────────────────────
+
+    addUserTurn(originalCommand);
 
     let partial = "";
     const reply = await askAIStream(messages, {

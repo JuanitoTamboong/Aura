@@ -21,7 +21,7 @@ import {
   FaBell,
   FaChevronDown,
   FaComments,
-  FaImages, // Added for Media Vault
+  FaImages,
 } from "react-icons/fa6";
 
 import { FaRegMoon } from "react-icons/fa";
@@ -48,7 +48,7 @@ import alarmSound from "../assets/sound/alarm-clock.mp3";
 import SplashScreen from "./SplashScreen";
 import WelcomeScreen from "./WelcomeScreen";
 import AuraWorkspace, { type ChatMessage } from "./AuraWorkspace";
-import AuraMediaVault from "./AuraMediaVault"; // Added Media Vault
+import AuraMediaVault from "./AuraMediaVault";
 
 interface CommandDetails {
   title: string;
@@ -83,7 +83,6 @@ const WAKE_WORDS = /\b(aur+a|aura|hey aura|okay aura|wake up|wake up aura|aura w
 const HISTORY_STORAGE_KEY = "aura_history";
 const WORKSPACE_STORAGE_KEY = "aura_workspace_messages";
 
-// Utility function for guaranteed unique IDs in chat
 const generateId = (prefix: string) =>
   `${prefix}-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(36).substring(2)}`;
 
@@ -190,6 +189,9 @@ const AuraAssistant: React.FC = () => {
   const inFlightControllerRef = useRef<AbortController | null>(null);
   const replyTokenRef = useRef(0);
   const lastPartialReplyRef = useRef("");
+
+  // ── NEW: Keep track of the last image shown ──────────────
+  const lastActiveImageRef = useRef<string | null>(null);
 
   // ── mirrors ──────────────────────────────────────────────
   const selectedVoiceNameRef = useRef(selectedVoiceName);
@@ -861,6 +863,7 @@ const AuraAssistant: React.FC = () => {
   const clearWorkspace = useCallback(() => {
     setChatMessages([]);
     activeAssistantMsgIdRef.current = null;
+    lastActiveImageRef.current = null;
     try { localStorage.removeItem(WORKSPACE_STORAGE_KEY); } catch {}
     clearConversation();
   }, []);
@@ -982,6 +985,8 @@ const AuraAssistant: React.FC = () => {
         setEmbeddedVideo,
         stopMic,
         signal: controller.signal,
+        // Pass the last active image to the AI API!
+        activeImageUrl: lastActiveImageRef.current, 
         onPartialReply: (partial) => {
           if (myToken !== replyTokenRef.current) return;
           lastPartialReplyRef.current = partial;
@@ -997,7 +1002,7 @@ const AuraAssistant: React.FC = () => {
           }
         },
       })
-        .then((result: any) => { // <-- Change to any
+        .then((result: any) => {
           if (myToken !== replyTokenRef.current) return;
           setUserProfile(getUserProfile());
 
@@ -1009,6 +1014,11 @@ const AuraAssistant: React.FC = () => {
           const finalText = isMediaResult 
             ? result.text 
             : (result && typeof result === 'string' && result.trim() ? result : lastPartialReplyRef.current || "Done.");
+
+          // If this message contains images, save the URL for the next AI prompt
+          if (isMediaResult && result.mediaItems.length > 0) {
+            lastActiveImageRef.current = result.mediaItems[0].url;
+          }
 
           const id = activeAssistantMsgIdRef.current;
           if (id) {
