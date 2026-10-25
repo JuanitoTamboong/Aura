@@ -5,58 +5,72 @@
   "type": "module",
   "main": "src/electron/electron.cjs",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:server\"",
+    "dev:web": "vite",
+    "dev:server": "node server/proxy.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "electron": "wait-on tcp:5173 && cross-env ELECTRON_START_URL=http://localhost:5173 electron src/electron/electron.cjs",
-    "start": "concurrently \"npm run dev\" \"npm run electron\"",
-    "dist": "npm run build && electron-builder"
+    "start": "concurrently -k \"npm:dev:web\" \"npm:dev:server\" \"npm:electron\"",
+    "dist": "npm run build && electron-builder",
+    "postinstall": "node -e \"console.log('\\nAura is ready. Run `npm run start` (web+server+electron) or `npm run dev` (web+server only).\\n')\""
   },
   "build": {
     "appId": "com.aura.ai",
     "productName": "Aura AI",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**/*",
-      "src/electron/**/*"
-    ],
-    "extraResources": [
-      ".env"
+      "dist-electron/**/*",
+      "src/electron/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/node_modules/.cache/**/*"
     ],
     "win": {
+      "target": "dir"
+    },
+    "mac": {
+      "target": "dir"
+    },
+    "linux": {
       "target": "dir"
     }
   },
   "dependencies": {
     "@google/genai": "^2.30.0",
     "@supabase/supabase-js": "^2.118.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "dotenv": "^18.0.8",
     "groq-sdk": "^1.6.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "react-icons": "^5.7.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "tailwindcss": "^4.3.3"
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^24.13.3",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
-    "@vitejs/plugin-react": "^6.1.1",
-    "concurrently": "^10.0.6",
+    "@eslint/js": "^9.17.0",
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
-    "electron": "^44.9.0",
-    "electron-builder": "^26.15.3",
-    "eslint": "^10.10.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.6",
-    "globals": "^17.12.0",
-    "typescript": "~6.0.2",
-    "typescript-eslint": "^8.69.0",
-    "vite": "^8.3.0",
-    "wait-on": "^9.5.1"
+    "dotenv": "^18.0.9",
+    "electron": "^34.0.0",
+    "electron-builder": "^26.0.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "~5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vite": "^6.0.0",
+    "wait-on": "^8.0.1"
   }
 }

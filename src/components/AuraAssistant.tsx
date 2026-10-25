@@ -24,13 +24,14 @@ import {
 
 import { FaRegMoon } from "react-icons/fa";
 
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import "../css/AuraAssistant.css";
 import auraLogo from "../assets/images/Aura-Logo.png";
 import auraDatabase from "../database/aura.json";
 import { processCommand } from "../command/AuraCommand";
+import { AuraApiError } from "../api/aura-api";
 import { clearConversation, getUserProfile } from "../command/AuraConversation";
 import {
   initReminders,
@@ -52,7 +53,7 @@ interface CommandDetails {
   match: string;
   type: string;
   data: any;
-  weatherIcon?: any; // Allows passing the SVG icon to the UI
+  weatherIcon?: any;
 }
 
 interface HistoryItem {
@@ -145,7 +146,7 @@ const AuraAssistant: React.FC = () => {
   const mountedRef = useRef(true);
   const lastCommandTextRef = useRef("");
 
-  // State locks to prevent race conditions
+  // ── Race-condition guards ────────────────────────────────────────
   const ignoreMicRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const micRestartTimeoutRef = useRef<any>(null);
@@ -156,6 +157,17 @@ const AuraAssistant: React.FC = () => {
   const micModeRef = useRef<MicMode>("off");
   const handsFreeRef = useRef(false);
   const wakeCooldownRef = useRef(false);
+
+  // ── NEW: single-flight AI request tracking ───────────────────────
+  const inFlightControllerRef = useRef<AbortController | null>(null);
+  const replyTokenRef = useRef(0);
+  const lastPartialReplyRef = useRef("");
+
+  // ── NEW: mirror of selectedVoiceName so auraSpeak can stay stable ─
+  const selectedVoiceNameRef = useRef(selectedVoiceName);
+
+  // ── NEW: ref to latest toggleMic for PiP ──────────────────────────
+  const toggleMicRef = useRef<() => void>(() => {});
 
   const wasOnlineRef = useRef<boolean>(
     typeof navigator !== "undefined" ? navigator.onLine : true
@@ -189,10 +201,10 @@ const AuraAssistant: React.FC = () => {
           audio: {
             autoGainControl: true,
             noiseSuppression: true,
-            echoCancellation: true
-          }
+            echoCancellation: true,
+          },
         });
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       } catch (err) {
         console.warn("Mic permission or DSP request failed:", err);
       }
@@ -246,7 +258,7 @@ const AuraAssistant: React.FC = () => {
     );
   };
 
-  const handleStopRinging = () => {
+  const handleStopRinging = useCallback(() => {
     stopAlarmSound();
     cancelAllAlarms();
 
@@ -275,13 +287,17 @@ const AuraAssistant: React.FC = () => {
     setTranscriptText("Alarm stopped. Standing by.");
     isSpeakingRef.current = false;
     ignoreMicRef.current = false;
-  };
+  }, []);
+
+  const handleStopRingingRef = useRef(handleStopRinging);
+  useEffect(() => { handleStopRingingRef.current = handleStopRinging; }, [handleStopRinging]);
 
   useEffect(() => {
     if (!isAlarmRinging) return;
 
     let stopRecognition: any = null;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (SpeechRecognition) {
       stopRecognition = new SpeechRecognition();
@@ -291,14 +307,13 @@ const AuraAssistant: React.FC = () => {
 
       stopRecognition.onresult = (event: any) => {
         const text = event.results[event.results.length - 1][0].transcript.toLowerCase();
-
         if (/\b(stop|quiet|shut up|cancel|enough)\b/i.test(text)) {
-          handleStopRinging();
+          handleStopRingingRef.current();
           try { stopRecognition.stop(); } catch {}
         }
       };
 
-      try { stopRecognition.start(); } catch (e) {}
+      try { stopRecognition.start(); } catch {}
     }
 
     return () => {
@@ -325,7 +340,7 @@ const AuraAssistant: React.FC = () => {
           mode: "no-cors",
           cache: "no-store",
           method: "HEAD",
-          signal: controller.signal
+          signal: controller.signal,
         });
 
         clearTimeout(timeoutId);
@@ -351,13 +366,11 @@ const AuraAssistant: React.FC = () => {
     };
   }, []);
 
+  // ── Initial greeting uses saved name ────────────────────────────
   useEffect(() => {
     const profile = getUserProfile();
-    if (profile.name && profile.name !== "Operator") {
-      setTranscriptText(`Awaiting your command, ${profile.name}.`);
-    } else {
-      setTranscriptText("Awaiting your command, operator.");
-    }
+    const name = profile.name && profile.name !== "Sir" ? profile.name : "operator";
+    setTranscriptText(`Awaiting your command, ${name}.`);
   }, []);
 
   useEffect(() => {
@@ -371,35 +384,26 @@ const AuraAssistant: React.FC = () => {
   }, [selectedVoiceName]);
 
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 760);
-    };
+    const checkMobile = () => setIsMobile(window.innerWidth <= 760);
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  useEffect(() => {
-    isListeningRef.current = isListening;
-  }, [isListening]);
+  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
+  useEffect(() => { micModeRef.current = micMode; }, [micMode]);
+  useEffect(() => { handsFreeRef.current = handsFree; }, [handsFree]);
+  useEffect(() => { selectedVoiceNameRef.current = selectedVoiceName; }, [selectedVoiceName]);
 
-  useEffect(() => {
-    micModeRef.current = micMode;
-  }, [micMode]);
-
-  useEffect(() => {
-    handsFreeRef.current = handsFree;
-  }, [handsFree]);
-
-  // ===== FIX C: Voice loading — never overwrites a user selection, warms cache early =====
+  // ── Voice loading (no cascade on selection change) ──────────────
   useEffect(() => {
     const loadVoices = () => {
       const allVoices = window.speechSynthesis.getVoices();
-      const englishVoices = allVoices.filter(v => v.lang.startsWith("en"));
+      const englishVoices = allVoices.filter((v) => v.lang.startsWith("en"));
 
       setAvailableVoices(englishVoices);
 
-      if (!selectedVoiceName) {
+      if (!selectedVoiceNameRef.current) {
         const saved = localStorage.getItem("aura_selected_voice");
         if (saved) {
           setSelectedVoiceName(saved);
@@ -407,9 +411,9 @@ const AuraAssistant: React.FC = () => {
         }
 
         const defaultVoice =
-          englishVoices.find(v => v.name.includes("Google US English")) ||
-          englishVoices.find(v => v.name.includes("David")) ||
-          englishVoices.find(v => v.name.includes("Mark")) ||
+          englishVoices.find((v) => v.name.includes("Google US English")) ||
+          englishVoices.find((v) => v.name.includes("David")) ||
+          englishVoices.find((v) => v.name.includes("Mark")) ||
           englishVoices[0];
 
         if (defaultVoice) setSelectedVoiceName(defaultVoice.name);
@@ -419,7 +423,6 @@ const AuraAssistant: React.FC = () => {
     loadVoices();
     window.speechSynthesis.onvoiceschanged = loadVoices;
 
-    // Chrome / Android sometimes return an empty list until speak() is called once.
     try {
       const warm = new SpeechSynthesisUtterance(" ");
       warm.volume = 0;
@@ -429,16 +432,18 @@ const AuraAssistant: React.FC = () => {
     return () => {
       window.speechSynthesis.onvoiceschanged = null;
     };
-  }, [selectedVoiceName]);
+  }, []);
 
+  // ── Unmount cleanup ─────────────────────────────────────────────
   useEffect(() => {
     return () => {
       mountedRef.current = false;
       isListeningRef.current = false;
 
-      try {
-        recognitionRef.current?.abort();
-      } catch {}
+      try { recognitionRef.current?.abort(); } catch {}
+      try { inFlightControllerRef.current?.abort(); } catch {}
+      inFlightControllerRef.current = null;
+      replyTokenRef.current++;
 
       window.speechSynthesis?.cancel();
       cancelAnimationFrame(mainAnimationRef.current);
@@ -472,20 +477,17 @@ const AuraAssistant: React.FC = () => {
         speed: 0.7 + Math.random() * 0.6,
         offset: Math.random() * Math.PI * 2,
         color: isLightPiP
-          ? (i % 2 === 0 ? "electric-blue" : "hot-pink")
-          : (i % 2 === 0 ? "cyan" : "violet"),
+          ? i % 2 === 0 ? "electric-blue" : "hot-pink"
+          : i % 2 === 0 ? "cyan" : "violet",
       }));
 
       const resize = () => {
         const rect = canvas.getBoundingClientRect();
         const dpr = Math.min(targetWindow.devicePixelRatio || 1, 2);
-
         width = rect.width;
         height = rect.height;
-
         canvas.width = Math.round(width * dpr);
         canvas.height = Math.round(height * dpr);
-
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       };
 
@@ -497,8 +499,7 @@ const AuraAssistant: React.FC = () => {
         const cx = width / 2;
         const cy = height / 2;
         const radius = Math.min(width, height) * 0.32;
-        const active =
-          micModeRef.current === "active" || isSpeakingRef.current;
+        const active = micModeRef.current === "active" || isSpeakingRef.current;
 
         phase += active ? 0.045 : 0.012;
 
@@ -550,11 +551,9 @@ const AuraAssistant: React.FC = () => {
             0, 0, radius * factor * 2.1, radius * factor * 1.1,
             index * 0.4, 0, Math.PI * 2
           );
-
           ctx.strokeStyle = index === 0
-              ? "rgba(34, 211, 238, 0.15)"
-              : "rgba(167, 139, 250, 0.13)";
-
+            ? "rgba(34, 211, 238, 0.15)"
+            : "rgba(167, 139, 250, 0.13)";
           ctx.lineWidth = 0.8;
           ctx.stroke();
         });
@@ -590,13 +589,15 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation]);
 
-  // ===== FIX A: auraSpeak strictly uses the requested voice (with cancel→speak gap) =====
+  // ── auraSpeak: reads current voice from ref, so its identity is stable ──
   const auraSpeak = useCallback((text: string, overrideVoiceName?: string) => {
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
     const currentGeneration = ++speechGenerationRef.current;
     const targetVoiceName =
-      overrideVoiceName !== undefined ? overrideVoiceName : selectedVoiceName;
+      overrideVoiceName !== undefined
+        ? overrideVoiceName
+        : selectedVoiceNameRef.current;
 
     try {
       window.speechSynthesis.cancel();
@@ -605,7 +606,7 @@ const AuraAssistant: React.FC = () => {
         audioPlaybackRef.current.currentTime = 0;
         audioPlaybackRef.current = null;
       }
-    } catch (e) {}
+    } catch {}
 
     isSpeakingRef.current = true;
     ignoreMicRef.current = true;
@@ -643,31 +644,26 @@ const AuraAssistant: React.FC = () => {
 
       if (!targetVoiceName) {
         speakNow(
-          voices.find(v => v.name.includes("Google US English")) ||
-          voices.find(v => v.name.includes("David")) ||
-          voices.find(v => v.name.includes("Mark")) ||
-          voices.find(v => v.lang.startsWith("en")) ||
+          voices.find((v) => v.name.includes("Google US English")) ||
+          voices.find((v) => v.name.includes("David")) ||
+          voices.find((v) => v.name.includes("Mark")) ||
+          voices.find((v) => v.lang.startsWith("en")) ||
           voices[0]
         );
         return;
       }
 
-      const exact = voices.find(v => v.name === targetVoiceName);
-
-      if (exact) {
-        speakNow(exact);
-        return;
-      }
+      const exact = voices.find((v) => v.name === targetVoiceName);
+      if (exact) { speakNow(exact); return; }
 
       const onVoicesReady = () => {
         window.speechSynthesis.onvoiceschanged = null;
         const retry = window.speechSynthesis
           .getVoices()
-          .find(v => v.name === targetVoiceName);
+          .find((v) => v.name === targetVoiceName);
 
-        if (retry) {
-          speakNow(retry);
-        } else {
+        if (retry) speakNow(retry);
+        else {
           console.warn(`Selected voice "${targetVoiceName}" is not available on this device.`);
           finishSpeaking();
           setStatusText("VOICE UNAVAILABLE");
@@ -686,8 +682,9 @@ const AuraAssistant: React.FC = () => {
 
     // Chrome/Edge/Android silently drop speak() if cancel() happened in the same tick.
     setTimeout(doSpeak, 80);
-  }, [selectedVoiceName]);
+  }, []); // ← empty deps: identity stable, reads voice from ref
 
+  // ── Electron alarm IPC ──────────────────────────────────────────
   useEffect(() => {
     if (bootStage !== "ready") return;
 
@@ -696,7 +693,6 @@ const AuraAssistant: React.FC = () => {
         try {
           const audio = new Audio(alarmSound);
           audio.loop = true;
-
           alarmAudioRef.current = audio;
           audio.play().catch(() => {});
         } catch {}
@@ -718,6 +714,7 @@ const AuraAssistant: React.FC = () => {
     }
   }, [bootStage, auraSpeak]);
 
+  // ── Online/offline transitions ──────────────────────────────────
   useEffect(() => {
     const wasOnline = wasOnlineRef.current;
     wasOnlineRef.current = isOnline;
@@ -726,7 +723,7 @@ const AuraAssistant: React.FC = () => {
       setStatusText("OFFLINE");
       setTranscriptText("No internet connection. Some features are unavailable.");
       try { window.speechSynthesis.cancel(); } catch {}
-      auraSpeak("Warning. I have lost internet connection.");
+      auraSpeak("Warning. I've lost internet.");
     } else if (isOnline && !wasOnline) {
       setStatusText("SYSTEM ONLINE");
       setTranscriptText("Connection restored. Aura is back online.");
@@ -756,9 +753,10 @@ const AuraAssistant: React.FC = () => {
     isListeningRef.current = false;
     setIsListening(false);
 
-    try {
-      recognitionRef.current?.stop();
-    } catch {}
+    try { recognitionRef.current?.stop(); } catch {}
+    try { inFlightControllerRef.current?.abort(); } catch {}
+    inFlightControllerRef.current = null;
+    replyTokenRef.current++;
 
     setStatusText("SYSTEM ONLINE");
   }, []);
@@ -770,14 +768,12 @@ const AuraAssistant: React.FC = () => {
     setIsListening(true);
     isListeningRef.current = true;
     setStatusText("LISTENING");
-    setTranscriptText("I'm listening. Say your command.");
+    setTranscriptText("I'm listening.");
 
     try {
       recognitionRef.current?.abort();
       setTimeout(() => {
-        if (!stopRequestedRef.current) {
-          recognitionRef.current?.start();
-        }
+        if (!stopRequestedRef.current) recognitionRef.current?.start();
       }, 300);
     } catch {}
 
@@ -803,14 +799,23 @@ const AuraAssistant: React.FC = () => {
     isListeningRef.current = false;
     stopRequestedRef.current = true;
     try { recognitionRef.current?.abort(); } catch {}
+    try { inFlightControllerRef.current?.abort(); } catch {}
+    inFlightControllerRef.current = null;
+    replyTokenRef.current++;
     setStatusText("SYSTEM ONLINE");
   }, []);
 
+  // ── runCommand with single-flight and streaming ─────────────────
   const runCommand = useCallback(
     (command: string) => {
       const cleaned = command.trim().replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
-
       if (!cleaned || cleaned.length < 2) return;
+
+      // Cancel any in-flight request; its .then handlers will see a stale token.
+      if (inFlightControllerRef.current) {
+        try { inFlightControllerRef.current.abort(); } catch {}
+        inFlightControllerRef.current = null;
+      }
 
       if (!isOnline) {
         setStatusText("OFFLINE");
@@ -826,50 +831,61 @@ const AuraAssistant: React.FC = () => {
             "YouTube search, or web search will not work right now.\n\n" +
             "Local commands (time, date, saved memory, opening apps) may still work.",
         });
-
-        auraSpeak("I can't process that right now. I don't have an internet connection.");
+        auraSpeak("I can't reach the network right now.");
         return;
       }
+
+      const controller = new AbortController();
+      inFlightControllerRef.current = controller;
+      const myToken = ++replyTokenRef.current;
+      lastPartialReplyRef.current = "";
 
       addHistory(cleaned);
       setTranscriptText(`"${cleaned}"`);
       setStatusText("PROCESSING COMMAND");
 
-      if (autoCloseTimeoutRef.current) {
-        clearTimeout(autoCloseTimeoutRef.current);
-      }
+      if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
 
-      try {
-        processCommand({
-          cmd: cleaned,
-          auraDatabase,
-          setStatusText,
-          setTranscriptText,
-          setCommandDetails,
-          auraSpeak,
-          setEmbeddedVideo,
-          stopMic,
-        }).then((resultMessage) => {
+      processCommand({
+        cmd: cleaned,
+        auraDatabase,
+        setStatusText,
+        setTranscriptText,
+        setCommandDetails,
+        auraSpeak,
+        setEmbeddedVideo,
+        stopMic,
+        signal: controller.signal,
+        onPartialReply: (partial) => {
+          if (myToken !== replyTokenRef.current) return;
+          lastPartialReplyRef.current = partial;
+          setTranscriptText(partial);
+        },
+      })
+        .then((resultMessage) => {
+          if (myToken !== replyTokenRef.current) return; // stale reply — drop it
           setUserProfile(getUserProfile());
 
           const all = getReminders().filter((r) => r.active);
           setPendingAlarms(all.sort((a, b) => a.time - b.time));
 
-          // ★ ONLY POP UP IF THERE IS A RESPONSE AND IT'S NOT EMPTY
           if (!isMobile && resultMessage && resultMessage.trim().length > 0) {
-            
-            // Wait 1.2 seconds AFTER Aura finishes speaking before showing the pop-up
             setTimeout(() => {
+              if (myToken !== replyTokenRef.current) return;
               setManualOpen(false);
               setShowResponseModal(true);
-            }, 1200); 
+            }, 1200);
           }
+        })
+        .catch((err) => {
+          if (err instanceof AuraApiError && err.kind === "aborted") return;
+          if (myToken !== replyTokenRef.current) return;
+          setStatusText("COMMAND ERROR");
+          setTranscriptText("Unable to process this command. Please try again.");
+        })
+        .finally(() => {
+          if (myToken === replyTokenRef.current) inFlightControllerRef.current = null;
         });
-
-      } catch (error) {
-        setStatusText("COMMAND ERROR");
-        setTranscriptText("Unable to process this command. Please try again.");
-      }
     },
     [addHistory, auraSpeak, stopMic, isMobile, isOnline]
   );
@@ -885,20 +901,15 @@ const AuraAssistant: React.FC = () => {
         return;
       }
 
-      try {
-        recognitionRef.current?.abort();
-      } catch {}
+      try { recognitionRef.current?.abort(); } catch {}
 
       const recognition = new SpeechRecognition();
-
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
 
       recognition.onresult = (event: any) => {
-        if (isSpeakingRef.current || ignoreMicRef.current) {
-          return;
-        }
+        if (isSpeakingRef.current || ignoreMicRef.current) return;
 
         let interim = "";
         const finalCommands: string[] = [];
@@ -906,14 +917,9 @@ const AuraAssistant: React.FC = () => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
           const text = result[0]?.transcript?.trim();
-
           if (!text) continue;
-
-          if (result.isFinal) {
-            finalCommands.push(text);
-          } else {
-            interim += text;
-          }
+          if (result.isFinal) finalCommands.push(text);
+          else interim += text;
         }
 
         const heardText = `${interim} ${finalCommands.join(" ")}`.toLowerCase();
@@ -922,7 +928,6 @@ const AuraAssistant: React.FC = () => {
           if (WAKE_WORDS.test(heardText) && !wakeCooldownRef.current) {
             wakeCooldownRef.current = true;
             setTimeout(() => { wakeCooldownRef.current = false; }, 2500);
-
             setTranscriptText(`"${heardText}" → waking up...`);
             enterActiveMode();
             lastCommandTextRef.current = "";
@@ -932,13 +937,15 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
+        // ── STOP: cancel speech, cancel AI, KEEP conversation memory ──
         if (STOP_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
+          try { inFlightControllerRef.current?.abort(); } catch {}
+          inFlightControllerRef.current = null;
+          replyTokenRef.current++;
+          if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
 
           if (handsFreeRef.current) {
-            if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
-
-            clearConversation();
             setEmbeddedVideo(null);
             setCommandDetails({
               title: "Standing By",
@@ -953,62 +960,47 @@ const AuraAssistant: React.FC = () => {
             return;
           }
 
-          if (!handsFreeRef.current) {
-            if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
-
-            stopMic();
-            clearConversation();
-            setEmbeddedVideo(null);
-            setTranscriptText(`Stopped.`);
-            setCommandDetails({
-              title: "Standing By",
-              category: "Awaiting Command",
-              match: "100%",
-              type: "text",
-              data: "System paused. Click INITIATE VOICE to start a new session.",
-            });
-            setShowResponseModal(false);
-            lastCommandTextRef.current = "";
-            return;
-          }
+          stopMic();
+          setEmbeddedVideo(null);
+          setTranscriptText("Stopped.");
+          setCommandDetails({
+            title: "Standing By",
+            category: "Awaiting Command",
+            match: "100%",
+            type: "text",
+            data: "Paused. Your conversation is still in memory.",
+          });
+          setShowResponseModal(false);
+          lastCommandTextRef.current = "";
+          return;
         }
 
+        // ── WAIT: stop speech, keep listening, keep memory ─────────
         if (WAIT_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
-
           if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
-
           setStatusText("LISTENING");
-          setTranscriptText(`Waiting...`);
+          setTranscriptText("Waiting...");
           setCommandDetails({
             title: "Waiting",
             category: "Standing By",
             match: "100%",
             type: "text",
-            data: "I'm listening. Take your time — say your command when ready.",
+            data: "Take your time — say your command when ready.",
           });
           lastCommandTextRef.current = "";
           return;
         }
 
-        if (isSpeakingRef.current) {
-          return;
-        }
+        if (isSpeakingRef.current) return;
 
-        if (interim && mountedRef.current) {
-          setTranscriptText(`"${interim}"`);
-        }
+        if (interim && mountedRef.current) setTranscriptText(`"${interim}"`);
 
         finalCommands.forEach((cmd) => {
           if (cmd !== lastCommandTextRef.current && cmd.length > 1) {
             lastCommandTextRef.current = cmd;
-
-            if (mountedRef.current) {
-              setTranscriptText(`"${cmd}"`);
-            }
-
+            if (mountedRef.current) setTranscriptText(`"${cmd}"`);
             runCommand(cmd);
-
             setTimeout(() => {
               if (lastCommandTextRef.current === cmd) lastCommandTextRef.current = "";
             }, 4000);
@@ -1018,10 +1010,7 @@ const AuraAssistant: React.FC = () => {
 
       recognition.onerror = (event: any) => {
         if (event.error === "no-speech" || event.error === "aborted") return;
-
-        if (handsFreeRef.current && event.error === "network") {
-           return;
-        }
+        if (handsFreeRef.current && event.error === "network") return;
 
         isListeningRef.current = false;
         setIsListening(false);
@@ -1040,13 +1029,12 @@ const AuraAssistant: React.FC = () => {
 
       recognition.onend = () => {
         const mode = micModeRef.current;
-
         if ((mode === "standby" || mode === "active") && !stopRequestedRef.current && !isSpeakingRef.current) {
           try {
             if (micRestartTimeoutRef.current) clearTimeout(micRestartTimeoutRef.current);
             micRestartTimeoutRef.current = setTimeout(() => {
               if (micModeRef.current !== "off" && !stopRequestedRef.current && !isSpeakingRef.current) {
-                 try { recognition.start(); } catch(e) {}
+                try { recognition.start(); } catch {}
               }
             }, 500);
           } catch (e) {
@@ -1054,9 +1042,7 @@ const AuraAssistant: React.FC = () => {
           }
         } else if (!isSpeakingRef.current && !stopRequestedRef.current) {
           setStatusText((previous: string) =>
-            previous === "LISTENING" || previous === "STANDBY"
-              ? "SYSTEM ONLINE"
-              : previous
+            previous === "LISTENING" || previous === "STANDBY" ? "SYSTEM ONLINE" : previous
           );
         }
       };
@@ -1069,25 +1055,19 @@ const AuraAssistant: React.FC = () => {
   useEffect(() => {
     setupSpeechRecognition(window);
     return () => {
-      try {
-        recognitionRef.current?.abort();
-      } catch {}
+      try { recognitionRef.current?.abort(); } catch {}
     };
   }, [setupSpeechRecognition]);
 
   useEffect(() => {
     if (!handsFree) return;
-
     const watchdog = setInterval(() => {
-        if (micModeRef.current !== "off" && !stopRequestedRef.current && !isSpeakingRef.current) {
-            try {
-                if (recognitionRef.current) {
-                    recognitionRef.current.start();
-                }
-            } catch (e) {}
-        }
+      if (micModeRef.current !== "off" && !stopRequestedRef.current && !isSpeakingRef.current) {
+        try {
+          if (recognitionRef.current) recognitionRef.current.start();
+        } catch {}
+      }
     }, 3000);
-
     return () => clearInterval(watchdog);
   }, [handsFree]);
 
@@ -1111,7 +1091,7 @@ const AuraAssistant: React.FC = () => {
       recognitionRef.current.start();
       enterStandbyMode();
       auraSpeak("Hands free mode active. Say Aura, wake up.");
-    } catch (err) {
+    } catch {
       setStatusText("MIC UNAVAILABLE");
     }
   }, [setupSpeechRecognition, enterStandbyMode, auraSpeak]);
@@ -1133,13 +1113,10 @@ const AuraAssistant: React.FC = () => {
       isListeningRef.current = false;
       setIsListening(false);
       try { recognitionRef.current?.abort(); } catch {}
-
       window.speechSynthesis.cancel();
-
       setStatusText("SYSTEM ONLINE");
       setShowResponseModal(false);
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
-
       return;
     }
 
@@ -1156,21 +1133,23 @@ const AuraAssistant: React.FC = () => {
       setIsListening(true);
       setStatusText("LISTENING");
       setTranscriptText("Listening for your command...");
-    } catch (error) {
+    } catch {
       setStatusText("MICROPHONE UNAVAILABLE");
     }
   }, [setupSpeechRecognition, enterActiveMode, exitHandsFree]);
 
-  useEffect(() => {
-    if (bootStage === "ready") {
-      const savedHandsFree = localStorage.getItem("aura_hands_free");
-      if (savedHandsFree === "true") {
-        startHandsFree();
-      }
-    }
-  }, [bootStage, startHandsFree]);
+  // Keep the ref up to date for PiP
+  useEffect(() => { toggleMicRef.current = toggleMic; }, [toggleMic]);
 
-  // ===== FIX: Modal Auto-Close Logic =====
+  // Restore hands-free state once
+  useEffect(() => {
+    if (bootStage !== "ready") return;
+    const savedHandsFree = localStorage.getItem("aura_hands_free");
+    if (savedHandsFree === "true") startHandsFree();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootStage]);
+
+  // Modal auto-close
   useEffect(() => {
     if (!showResponseModal || isMobile || manualOpen) return;
 
@@ -1179,27 +1158,19 @@ const AuraAssistant: React.FC = () => {
     const checkSpeechAndClose = () => {
       if (isCancelled) return;
 
-      // Check if Aura is STILL speaking
       if (window.speechSynthesis.speaking || isSpeakingRef.current) {
-        // Still talking? Check again in 500ms
         setTimeout(checkSpeechAndClose, 500);
         return;
       }
 
-      // Aura is done speaking. Start the countdown to close.
-      // Weather gets 8 seconds to read, others get 4 seconds.
       const delay = commandDetails.category === "Environment" ? 8000 : 4000;
-
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
-      
+
       autoCloseTimeoutRef.current = setTimeout(() => {
-        if (!manualOpen) {
-          setShowResponseModal(false);
-        }
+        if (!manualOpen) setShowResponseModal(false);
       }, delay);
     };
 
-    // Start checking 1 second after the modal opens
     const initialDelay = setTimeout(checkSpeechAndClose, 1000);
 
     return () => {
@@ -1226,7 +1197,8 @@ const AuraAssistant: React.FC = () => {
     try {
       const pipWindow: Window =
         await browser.documentPictureInPicture.requestWindow({
-          width: 420, height: 620,
+          width: 420,
+          height: 620,
         });
 
       pipWindowRef.current = pipWindow;
@@ -1281,9 +1253,7 @@ const AuraAssistant: React.FC = () => {
       `;
       pipWindow.document.head.appendChild(style);
 
-      if (lightMode) {
-        pipWindow.document.body.classList.add("aura-light-pip");
-      }
+      if (lightMode) pipWindow.document.body.classList.add("aura-light-pip");
 
       const container = pipWindow.document.createElement("div");
       container.className = "aura-pip";
@@ -1324,16 +1294,23 @@ const AuraAssistant: React.FC = () => {
       };
 
       updatePip();
-      pipMic?.addEventListener("click", toggleMic);
+
+      // Use the ref so we always call the LATEST toggleMic, not a stale closure
+      const pipClickHandler = () => toggleMicRef.current();
+      pipMic?.addEventListener("click", pipClickHandler);
 
       const syncInterval = window.setInterval(updatePip, 500);
 
       pipWindow.addEventListener("pagehide", () => {
-        window.clearInterval(syncInterval);
-        stopAnimation();
-        cancelAnimationFrame(pipAnimationRef.current);
-        pipWindowRef.current = null;
-        setPipOpen(false);
+        try {
+          window.clearInterval(syncInterval);
+          stopAnimation();
+          cancelAnimationFrame(pipAnimationRef.current);
+          pipMic?.removeEventListener("click", pipClickHandler);
+          pipWindowRef.current = null;
+        } finally {
+          setPipOpen(false);
+        }
       }, { once: true });
 
       setPipOpen(true);
@@ -1342,7 +1319,7 @@ const AuraAssistant: React.FC = () => {
       setStatusText("POP-OUT FAILED");
       setTranscriptText("Unable to open the floating Aura window.");
     }
-  }, [startAnimation, toggleMic, pipOpen, lightMode]);
+  }, [startAnimation, pipOpen, lightMode]);
 
   const filteredHistory = history.filter((item) =>
     item.command.toLowerCase().includes(searchQuery.toLowerCase())
@@ -1366,31 +1343,41 @@ const AuraAssistant: React.FC = () => {
     setHistory([]);
     setSearchQuery("");
     clearConversation();
-
     try {
       localStorage.removeItem(HISTORY_STORAGE_KEY);
     } catch (error) {
       console.warn("Failed to clear Aura history:", error);
     }
-
     historyIdRef.current = 0;
   };
 
   const renderResult = () => {
     if (commandDetails.type === "video" && Array.isArray(commandDetails.data)) {
-      if (commandDetails.data.length === 0) return <p className="aura-empty">No video results returned.</p>;
+      if (commandDetails.data.length === 0)
+        return <p className="aura-empty">No video results returned.</p>;
 
       return commandDetails.data.map((video: any, index: number) => (
         <article className="aura-video" key={`${video.title}-${index}`}>
-          {video.img ? <img src={video.img} alt="" loading="lazy" /> : <div className="aura-video-placeholder"><FaPlay /></div>}
+          {video.img ? (
+            <img src={video.img} alt="" loading="lazy" />
+          ) : (
+            <div className="aura-video-placeholder"><FaPlay /></div>
+          )}
           <div className="aura-video-info">
             <strong>{video.title || "Untitled video"}</strong>
             <span>VIDEO RESULT</span>
           </div>
-          <button type="button" className="aura-icon-button" aria-label={`Play ${video.title || "video"}`}
+          <button
+            type="button"
+            className="aura-icon-button"
+            aria-label={`Play ${video.title || "video"}`}
             onClick={() => {
               const query = video.query || video.title;
-              if (query) setEmbeddedVideo(`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1`);
+              if (query) {
+                setEmbeddedVideo(
+                  `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1`
+                );
+              }
             }}
           >
             <FaPlay />
@@ -1399,7 +1386,10 @@ const AuraAssistant: React.FC = () => {
       ));
     }
 
-    const resultText = typeof commandDetails.data === "string" ? commandDetails.data : JSON.stringify(commandDetails.data, null, 2);
+    const resultText =
+      typeof commandDetails.data === "string"
+        ? commandDetails.data
+        : JSON.stringify(commandDetails.data, null, 2);
 
     return (
       <div
@@ -1415,7 +1405,6 @@ const AuraAssistant: React.FC = () => {
           RESPONSE DATA (CLICK TO EXPAND)
         </div>
         <div className="aura-markdown-container">
-          {/* WEATHER ICON IN SIDEBAR PREVIEW */}
           {commandDetails.category === "Environment" && commandDetails.weatherIcon && (
             <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
               {commandDetails.weatherIcon}
@@ -1437,9 +1426,18 @@ const AuraAssistant: React.FC = () => {
     micMode === "standby" ? "orb-standby" :
     "orb-glow";
 
+  // Derive status indicator class (streaming / active / idle)
+  const statusIndicatorClass =
+    statusText === "SPEAKING"
+      ? "active"
+      : statusText === "PROCESSING COMMAND" && lastPartialReplyRef.current
+      ? "streaming"
+      : micMode === "active"
+      ? "active"
+      : "";
+
   return (
     <div className={`aura-app ${lightMode ? "aura-light" : ""}`}>
-
       <div className="aura-scanlines" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-one" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-two" aria-hidden="true" />
@@ -1473,7 +1471,7 @@ const AuraAssistant: React.FC = () => {
             alignItems: "center",
             justifyContent: "center",
             padding: isMobile ? "10px" : "20px",
-            animation: "auraBackdropIn 300ms ease-out forwards"
+            animation: "auraBackdropIn 300ms ease-out forwards",
           }}
         >
           <div
@@ -1488,71 +1486,104 @@ const AuraAssistant: React.FC = () => {
               flexDirection: isMobile ? "column" : "row",
               boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px rgba(139, 92, 246, 0.15)",
               overflow: "hidden",
-              animation: "auraModalPop 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards"
+              animation: "auraModalPop 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
             }}
           >
-            <div style={{
-              width: isMobile ? "100%" : "350px",
-              flexShrink: 0,
-              display: "flex",
-              flexDirection: isMobile ? "row" : "column",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(0,0,0,0) 100%)",
-              borderRight: isMobile ? "none" : "1px solid rgba(139, 92, 246, 0.2)",
-              borderBottom: isMobile ? "1px solid rgba(139, 92, 246, 0.2)" : "none",
-              padding: isMobile ? "15px" : "40px",
-              position: "relative",
-              gap: "15px"
-            }}>
+            <div
+              style={{
+                width: isMobile ? "100%" : "350px",
+                flexShrink: 0,
+                display: "flex",
+                flexDirection: isMobile ? "row" : "column",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(0,0,0,0) 100%)",
+                borderRight: isMobile ? "none" : "1px solid rgba(139, 92, 246, 0.2)",
+                borderBottom: isMobile ? "1px solid rgba(139, 92, 246, 0.2)" : "none",
+                padding: isMobile ? "15px" : "40px",
+                position: "relative",
+                gap: "15px",
+              }}
+            >
               <div
-                className={`aura-orb ${statusText === "SPEAKING" || micMode === "active" ? "listening-active" : "orb-glow"}`}
+                className={`aura-orb ${
+                  statusText === "SPEAKING" || micMode === "active"
+                    ? "listening-active"
+                    : "orb-glow"
+                }`}
                 style={{ width: isMobile ? "80px" : "100%", marginBottom: isMobile ? "0" : "20px" }}
               >
                 <div className="aura-orb-grid" aria-hidden="true" />
                 <div className="aura-orb-ring aura-orb-ring-one" />
                 <div className="aura-orb-ring aura-orb-ring-two" />
-                <img src={auraLogo} alt="Aura AI" className="aura-core-logo" style={{ width: isMobile ? "40%" : "40%" }} />
+                <img
+                  src={auraLogo}
+                  alt="Aura AI"
+                  className="aura-core-logo"
+                  style={{ width: isMobile ? "40%" : "40%" }}
+                />
                 <canvas ref={modalCanvasRef} aria-hidden="true" />
               </div>
               <div style={{ textAlign: isMobile ? "left" : "center" }}>
-                <h3 style={{
-                  margin: 0,
-                  fontFamily: "var(--aura-display)",
-                  color: lightMode ? "#21183c" : "#fff",
-                  letterSpacing: "0.1em",
-                }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontFamily: "var(--aura-display)",
+                    color: lightMode ? "#21183c" : "#fff",
+                    letterSpacing: "0.1em",
+                  }}
+                >
                   AURA AI
                 </h3>
-                <span style={{
-                  marginTop: "4px",
-                  display: "block",
-                  fontSize: "10px",
-                  color: "#a78bfa",
-                  letterSpacing: "0.2em",
-                  fontFamily: "var(--aura-display)"
-                }}>
+                <span
+                  style={{
+                    marginTop: "4px",
+                    display: "block",
+                    fontSize: "10px",
+                    color: "#a78bfa",
+                    letterSpacing: "0.2em",
+                    fontFamily: "var(--aura-display)",
+                  }}
+                >
                   {commandDetails.category}
                 </span>
               </div>
             </div>
 
-            <div style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              position: "relative",
-              minHeight: "200px",
-              overflow: "hidden"
-            }}>
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "flex-start",
-                padding: "20px",
-                borderBottom: "1px solid rgba(139, 92, 246, 0.15)",
-              }}>
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                position: "relative",
+                minHeight: "200px",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  padding: "20px",
+                  borderBottom: "1px solid rgba(139, 92, 246, 0.15)",
+                }}
+              >
                 <div>
-                  <span className="aura-eyebrow" style={{ color: "#a78bfa", letterSpacing: "0.15em" }}>IDENTIFIED SUBJECT</span>
-                  <h3 style={{ margin: "5px 0 0", fontSize: "20px", color: lightMode ? "#21183c" : "#fff", lineHeight: 1.2 }}>
+                  <span
+                    className="aura-eyebrow"
+                    style={{ color: "#a78bfa", letterSpacing: "0.15em" }}
+                  >
+                    IDENTIFIED SUBJECT
+                  </span>
+                  <h3
+                    style={{
+                      margin: "5px 0 0",
+                      fontSize: "20px",
+                      color: lightMode ? "#21183c" : "#fff",
+                      lineHeight: 1.2,
+                    }}
+                  >
                     {commandDetails.title}
                   </h3>
                 </div>
@@ -1562,34 +1593,59 @@ const AuraAssistant: React.FC = () => {
                     setManualOpen(false);
                   }}
                   style={{
-                    background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.3)",
-                    color: "#a78bfa", width: "36px", height: "36px", borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    cursor: "pointer", transition: "all 200ms", flexShrink: 0
+                    background: "rgba(139, 92, 246, 0.1)",
+                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    color: "#a78bfa",
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    transition: "all 200ms",
+                    flexShrink: 0,
                   }}
                 >
                   <FaXmark size={18} />
                 </button>
               </div>
 
-              <div style={{
-                padding: "20px", overflowY: "auto", flex: 1,
-                color: lightMode ? "#30274b" : "#d2cbe6",
-                fontSize: "16px", lineHeight: "1.8",
-                fontFamily: "var(--aura-font)"
-              }}>
+              <div
+                style={{
+                  padding: "20px",
+                  overflowY: "auto",
+                  flex: 1,
+                  color: lightMode ? "#30274b" : "#d2cbe6",
+                  fontSize: "16px",
+                  lineHeight: "1.8",
+                  fontFamily: "var(--aura-font)",
+                }}
+              >
                 {commandDetails.type === "video" && Array.isArray(commandDetails.data) ? (
                   renderResult()
                 ) : (
-                  <div className={`aura-markdown-container ${commandDetails.category === "Environment" ? "aura-weather-grid" : ""}`}>
-                    {/* WEATHER ICON IN MODAL */}
+                  <div
+                    className={`aura-markdown-container ${
+                      commandDetails.category === "Environment" ? "aura-weather-grid" : ""
+                    }`}
+                  >
                     {commandDetails.category === "Environment" && commandDetails.weatherIcon && (
-                      <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "center",
+                          marginBottom: "20px",
+                        }}
+                      >
                         {commandDetails.weatherIcon}
                       </div>
                     )}
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {(typeof commandDetails.data === "string" ? commandDetails.data : JSON.stringify(commandDetails.data, null, 2)) || "No response data returned."}
+                      {(typeof commandDetails.data === "string"
+                        ? commandDetails.data
+                        : JSON.stringify(commandDetails.data, null, 2)) ||
+                        "No response data returned."}
                     </ReactMarkdown>
                   </div>
                 )}
@@ -1628,14 +1684,21 @@ const AuraAssistant: React.FC = () => {
                 backgroundColor: "#ef4444",
                 color: "white",
                 border: "1px solid #dc2626",
-                animation: "pulse 1s infinite"
+                animation: "pulse 1s infinite",
               }}
             >
               <FaStop />
             </button>
           )}
 
-          <button type="button" className="aura-icon-button" title="System Logs" onClick={() => setShowLogs((value) => !value)}><FaTerminal /></button>
+          <button
+            type="button"
+            className="aura-icon-button"
+            title="System Logs"
+            onClick={() => setShowLogs((value) => !value)}
+          >
+            <FaTerminal />
+          </button>
           <button
             type="button"
             className={`aura-icon-button ${handsFree ? "is-active" : ""}`}
@@ -1644,65 +1707,125 @@ const AuraAssistant: React.FC = () => {
           >
             <FaPowerOff />
           </button>
-          <button type="button" className="aura-icon-button" title="Toggle appearance" onClick={() => setLightMode((value) => !value)}><FaRegMoon /></button>
-          <button type="button" className={`aura-icon-button ${pipOpen ? "is-active" : ""}`} title="Open floating Aura" onClick={handlePopOut} disabled={pipOpen}><FaUpRightFromSquare /></button>
+          <button
+            type="button"
+            className="aura-icon-button"
+            title="Toggle appearance"
+            onClick={() => setLightMode((value) => !value)}
+          >
+            <FaRegMoon />
+          </button>
+          <button
+            type="button"
+            className={`aura-icon-button ${pipOpen ? "is-active" : ""}`}
+            title="Open floating Aura"
+            onClick={handlePopOut}
+            disabled={pipOpen}
+          >
+            <FaUpRightFromSquare />
+          </button>
         </div>
       </header>
 
       {showLogs && (
         <div className="aura-notification">
-          <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--aura-violet)', fontSize: '11px' }}><FaTerminal /> SYSTEM SETTINGS & LOGS</strong>
+          <strong
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              color: "var(--aura-violet)",
+              fontSize: "11px",
+            }}
+          >
+            <FaTerminal /> SYSTEM SETTINGS & LOGS
+          </strong>
 
-          <div style={{
-            marginTop: '15px', marginBottom: '15px', padding: '10px',
-            background: 'rgba(34, 211, 238, 0.1)',
-            borderRadius: '5px',
-            border: '1px solid rgba(34, 211, 238, 0.4)'
-          }}>
-            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--aura-muted)', fontFamily: 'monospace' }}>
+          <div
+            style={{
+              marginTop: "15px",
+              marginBottom: "15px",
+              padding: "10px",
+              background: "rgba(34, 211, 238, 0.1)",
+              borderRadius: "5px",
+              border: "1px solid rgba(34, 211, 238, 0.4)",
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "10px",
+                color: "var(--aura-muted)",
+                fontFamily: "monospace",
+              }}
+            >
               <span>VOICE ENGINE:</span>
-              <span style={{ color: 'var(--aura-cyan)', fontWeight: 'bold' }}>
+              <span style={{ color: "var(--aura-cyan)", fontWeight: "bold" }}>
                 BROWSER (DEFAULT)
               </span>
             </label>
           </div>
 
-          <div style={{ marginTop: '15px', marginBottom: '15px', position: 'relative' }} ref={dropdownRef}>
-            <label style={{ display: 'block', fontSize: '10px', color: 'var(--aura-muted)', marginBottom: '5px', fontFamily: 'monospace' }}>
+          <div style={{ marginTop: "15px", marginBottom: "15px", position: "relative" }} ref={dropdownRef}>
+            <label
+              style={{
+                display: "block",
+                fontSize: "10px",
+                color: "var(--aura-muted)",
+                marginBottom: "5px",
+                fontFamily: "monospace",
+              }}
+            >
               VOICE SELECTION:
             </label>
             <button
               type="button"
               onClick={() => setIsVoiceDropdownOpen(!isVoiceDropdownOpen)}
               style={{
-                width: '100%', padding: '8px 10px',
-                background: lightMode ? '#ffffff' : '#0f0d23',
-                color: lightMode ? '#21183c' : '#fff',
-                border: '1px solid var(--aura-border-bright)',
-                borderRadius: '5px', fontSize: '12px',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                cursor: 'pointer', textAlign: 'left'
+                width: "100%",
+                padding: "8px 10px",
+                background: lightMode ? "#ffffff" : "#0f0d23",
+                color: lightMode ? "#21183c" : "#fff",
+                border: "1px solid var(--aura-border-bright)",
+                borderRadius: "5px",
+                fontSize: "12px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                cursor: "pointer",
+                textAlign: "left",
               }}
             >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {selectedVoiceName || "Browser Default"}
               </span>
-              <FaChevronDown style={{ transform: isVoiceDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}/>
+              <FaChevronDown
+                style={{
+                  transform: isVoiceDropdownOpen ? "rotate(180deg)" : "none",
+                  transition: "transform 0.2s",
+                }}
+              />
             </button>
 
             {isVoiceDropdownOpen && (
-              <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0,
-                marginTop: '5px',
-                background: lightMode ? '#ffffff' : '#0f0d23',
-                border: '1px solid var(--aura-border-bright)',
-                borderRadius: '5px',
-                zIndex: 50,
-                maxHeight: '200px', overflowY: 'auto',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-              }}>
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  marginTop: "5px",
+                  background: lightMode ? "#ffffff" : "#0f0d23",
+                  border: "1px solid var(--aura-border-bright)",
+                  borderRadius: "5px",
+                  zIndex: 50,
+                  maxHeight: "200px",
+                  overflowY: "auto",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                }}
+              >
                 {availableVoices.map((voice, idx) => (
-                  // ===== FIX B: persist immediately + preview with the NEW voice =====
                   <div
                     key={idx}
                     onClick={() => {
@@ -1712,84 +1835,168 @@ const AuraAssistant: React.FC = () => {
                       auraSpeak("Browser voice activated.", voice.name);
                     }}
                     style={{
-                      padding: '8px 10px',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                      borderBottom: '1px solid var(--aura-border)',
-                      background: voice.name === selectedVoiceName
-                        ? (lightMode ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.25)')
-                        : 'transparent',
-                      color: voice.name === selectedVoiceName ? 'var(--aura-violet)' : 'inherit',
+                      padding: "8px 10px",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      borderBottom: "1px solid var(--aura-border)",
+                      background:
+                        voice.name === selectedVoiceName
+                          ? lightMode
+                            ? "rgba(139,92,246,0.12)"
+                            : "rgba(139,92,246,0.25)"
+                          : "transparent",
+                      color:
+                        voice.name === selectedVoiceName ? "var(--aura-violet)" : "inherit",
                       fontWeight: voice.name === selectedVoiceName ? 600 : 400,
                     }}
                     className="aura-dropdown-item"
                   >
-                    {voice.name === selectedVoiceName ? '● ' : ''}{voice.name} ({voice.lang})
+                    {voice.name === selectedVoiceName ? "● " : ""}
+                    {voice.name} ({voice.lang})
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '5px', border: '1px solid var(--aura-border)' }}>
-            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--aura-muted)', marginBottom: '5px', fontFamily: 'monospace' }}>
+          <div
+            style={{
+              marginBottom: "15px",
+              padding: "10px",
+              background: "rgba(139, 92, 246, 0.1)",
+              borderRadius: "5px",
+              border: "1px solid var(--aura-border)",
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "10px",
+                color: "var(--aura-muted)",
+                marginBottom: "5px",
+                fontFamily: "monospace",
+              }}
+            >
               <span>USER MEMORY PROFILE:</span>
-              <span style={{ color: 'var(--aura-violet)', cursor: 'pointer' }} onClick={() => setUserProfile(getUserProfile())}>↻ REFRESH</span>
+              <span
+                style={{ color: "var(--aura-violet)", cursor: "pointer" }}
+                onClick={() => setUserProfile(getUserProfile())}
+              >
+                ↻ REFRESH
+              </span>
             </label>
 
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--aura-text)', fontFamily: 'monospace' }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "12px",
+                color: "var(--aura-text)",
+                fontFamily: "monospace",
+              }}
+            >
               <strong>Name:</strong> {userProfile.name}
             </p>
 
             {userProfile.facts && userProfile.facts.length > 0 ? (
-               <p style={{ margin: '5px 0 0', fontSize: '11px', color: 'var(--aura-text)', fontFamily: 'monospace' }}>
-                 <strong>Facts:</strong>
-                 <br/>
-                 {userProfile.facts.map((fact, idx) => (
-                   <span key={idx}>• {fact}<br/></span>
-                 ))}
-               </p>
+              <p
+                style={{
+                  margin: "5px 0 0",
+                  fontSize: "11px",
+                  color: "var(--aura-text)",
+                  fontFamily: "monospace",
+                }}
+              >
+                <strong>Facts:</strong>
+                <br />
+                {userProfile.facts.map((fact, idx) => (
+                  <span key={idx}>• {fact}<br /></span>
+                ))}
+              </p>
             ) : (
-              <p style={{ margin: '5px 0 0', fontSize: '10px', color: 'var(--aura-subtle)', fontFamily: 'monospace', fontStyle: 'italic' }}>
+              <p
+                style={{
+                  margin: "5px 0 0",
+                  fontSize: "10px",
+                  color: "var(--aura-subtle)",
+                  fontFamily: "monospace",
+                  fontStyle: "italic",
+                }}
+              >
                 No additional facts saved yet.
               </p>
             )}
           </div>
 
-          <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '5px', border: '1px solid var(--aura-border)' }}>
-            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--aura-muted)', marginBottom: '5px', fontFamily: 'monospace' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div
+            style={{
+              marginBottom: "15px",
+              padding: "10px",
+              background: "rgba(139, 92, 246, 0.1)",
+              borderRadius: "5px",
+              border: "1px solid var(--aura-border)",
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "10px",
+                color: "var(--aura-muted)",
+                marginBottom: "5px",
+                fontFamily: "monospace",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <FaBell /> PENDING ALARMS:
               </span>
-              <span style={{ color: 'var(--aura-violet)' }}>
-                {pendingAlarms.length.toString().padStart(2, '0')}
+              <span style={{ color: "var(--aura-violet)" }}>
+                {pendingAlarms.length.toString().padStart(2, "0")}
               </span>
             </label>
 
             {pendingAlarms.length === 0 ? (
-              <p style={{ margin: 0, fontSize: '10px', color: 'var(--aura-subtle)', fontFamily: 'monospace', fontStyle: 'italic' }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "10px",
+                  color: "var(--aura-subtle)",
+                  fontFamily: "monospace",
+                  fontStyle: "italic",
+                }}
+              >
                 No alarms scheduled.
               </p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {pendingAlarms.map((alarm) => (
                   <div
                     key={alarm.id}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                       gap: 8,
-                      fontSize: '11px',
-                      color: 'var(--aura-text)',
-                      fontFamily: 'monospace',
+                      fontSize: "11px",
+                      color: "var(--aura-text)",
+                      fontFamily: "monospace",
                     }}
                   >
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <strong style={{ color: 'var(--aura-violet)' }}>
-                        {new Date(alarm.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <strong style={{ color: "var(--aura-violet)" }}>
+                        {new Date(alarm.time).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </strong>
-                      {' — '}
+                      {" — "}
                       {alarm.message}
                     </span>
                     <button
@@ -1797,59 +2004,116 @@ const AuraAssistant: React.FC = () => {
                       onClick={() => handleCancelAlarm(alarm.id)}
                       title="Cancel this alarm"
                       style={{
-                        background: 'transparent',
-                        border: '1px solid rgba(248, 113, 113, 0.4)',
-                        color: '#f87171',
+                        background: "transparent",
+                        border: "1px solid rgba(248, 113, 113, 0.4)",
+                        color: "#f87171",
                         borderRadius: 4,
-                        cursor: 'pointer',
-                        padding: '2px 6px',
+                        cursor: "pointer",
+                        padding: "2px 6px",
                         fontSize: 10,
-                        fontFamily: 'monospace',
+                        fontFamily: "monospace",
                       }}
                     >
-                      ✕                    </button>
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div style={{ fontSize: '11px', color: 'var(--aura-muted)', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', borderTop: '1px solid var(--aura-border)', paddingTop: '10px' }}>
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--aura-muted)",
+              fontFamily: "monospace",
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+              maxHeight: "120px",
+              overflowY: "auto",
+              borderTop: "1px solid var(--aura-border)",
+              paddingTop: "10px",
+            }}
+          >
             <p>• Core initialisation successful.</p>
             <p>• Speech recognition ready.</p>
-            {!isOnline && <p style={{ color: '#fca5a5' }}>• Network offline — cloud features disabled.</p>}
-            {handsFree && <p style={{ color: 'var(--aura-violet)' }}>• Hands-free mode active ({micMode}).</p>}
-            {history.length > 0 && <p style={{ color: 'var(--aura-violet)' }}>• Last command: "{history[0].command}"</p>}
-            {embeddedVideo && <p style={{ color: 'var(--aura-cyan)' }}>• Embedded player active.</p>}
-            {pipOpen && <p style={{ color: 'var(--aura-cyan)' }}>• Floating Aura window active.</p>}
-            {pendingAlarms.length > 0 && <p style={{ color: 'var(--aura-cyan)' }}>• {pendingAlarms.length} alarm{pendingAlarms.length === 1 ? '' : 's'} scheduled.</p>}
+            {!isOnline && <p style={{ color: "#fca5a5" }}>• Network offline — cloud features disabled.</p>}
+            {handsFree && (
+              <p style={{ color: "var(--aura-violet)" }}>
+                • Hands-free mode active ({micMode}).
+              </p>
+            )}
+            {history.length > 0 && (
+              <p style={{ color: "var(--aura-violet)" }}>
+                • Last command: "{history[0].command}"
+              </p>
+            )}
+            {embeddedVideo && <p style={{ color: "var(--aura-cyan)" }}>• Embedded player active.</p>}
+            {pipOpen && <p style={{ color: "var(--aura-cyan)" }}>• Floating Aura window active.</p>}
+            {pendingAlarms.length > 0 && (
+              <p style={{ color: "var(--aura-cyan)" }}>
+                • {pendingAlarms.length} alarm{pendingAlarms.length === 1 ? "" : "s"} scheduled.
+              </p>
+            )}
           </div>
-          <button type="button" onClick={() => setShowLogs(false)} style={{ marginTop: '15px', width: '100%' }}>Close Settings</button>
+          <button
+            type="button"
+            onClick={() => setShowLogs(false)}
+            style={{ marginTop: "15px", width: "100%" }}
+          >
+            Close Settings
+          </button>
         </div>
       )}
 
       <main className="aura-dashboard">
         <aside className="aura-panel aura-sidebar">
           <div className="aura-panel-heading">
-            <div className="aura-section-icon"><FaClockRotateLeft /></div>
-            <div><span className="aura-eyebrow">DATABASE / 01</span><h2>Command Archive</h2></div>
+            <div className="aura-section-icon">
+              <FaClockRotateLeft />
+            </div>
+            <div>
+              <span className="aura-eyebrow">DATABASE / 01</span>
+              <h2>Command Archive</h2>
+            </div>
           </div>
 
-          <button type="button" className="aura-search-box" onClick={() => setShowSearch((value) => !value)}>
-            <FaMagnifyingGlass /><span>{showSearch ? "Hide search" : "Search commands"}</span>
+          <button
+            type="button"
+            className="aura-search-box"
+            onClick={() => setShowSearch((value) => !value)}
+          >
+            <FaMagnifyingGlass />
+            <span>{showSearch ? "Hide search" : "Search commands"}</span>
           </button>
 
-          {showSearch && <input className="aura-search-input" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Filter your commands..." />}
+          {showSearch && (
+            <input
+              className="aura-search-input"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Filter your commands..."
+            />
+          )}
 
           <div className="aura-archive-heading">
-            <span>RECENT ACTIVITY</span><span>{filteredHistory.length.toString().padStart(2, "0")}</span>
+            <span>RECENT ACTIVITY</span>
+            <span>{filteredHistory.length.toString().padStart(2, "0")}</span>
           </div>
 
           <div className="aura-history-list">
             {filteredHistory.length > 0 ? (
               filteredHistory.map((item, index) => (
-                <button type="button" className="aura-history-item" key={item.id} onClick={() => selectHistory(item)}>
-                  <span className="aura-history-index">{String(index + 1).padStart(2, "0")}</span>
+                <button
+                  type="button"
+                  className="aura-history-item"
+                  key={item.id}
+                  onClick={() => selectHistory(item)}
+                >
+                  <span className="aura-history-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
                   <span className="aura-history-copy">
                     <strong title={item.command}>{item.command}</strong>
                     <small>{item.timestamp}</small>
@@ -1858,19 +2122,33 @@ const AuraAssistant: React.FC = () => {
                 </button>
               ))
             ) : (
-              <div className="aura-empty-history"><FaTerminal /><strong>Archive empty</strong><p>Your commands will appear here after you use Aura.</p></div>
+              <div className="aura-empty-history">
+                <FaTerminal />
+                <strong>Archive empty</strong>
+                <p>Your commands will appear here after you use Aura.</p>
+              </div>
             )}
           </div>
 
           <div className="aura-sidebar-footer">
-            <div><span className="aura-live-dot" /> LOCAL SESSION</div>
-            <button type="button" className="aura-clear-button" onClick={clearHistory} disabled={history.length === 0}><FaTrash /> CLEAR</button>
+            <div>
+              <span className="aura-live-dot" /> LOCAL SESSION
+            </div>
+            <button
+              type="button"
+              className="aura-clear-button"
+              onClick={clearHistory}
+              disabled={history.length === 0}
+            >
+              <FaTrash /> CLEAR
+            </button>
           </div>
         </aside>
 
         <section className="aura-center">
           <div className="aura-center-topline">
-            <span>NEURAL INTERFACE</span><span className="aura-center-coordinates">CORE // 001</span>
+            <span>NEURAL INTERFACE</span>
+            <span className="aura-center-coordinates">CORE // 001</span>
           </div>
 
           <div className="aura-core-stage" ref={centerPlaceholderRef}>
@@ -1887,89 +2165,146 @@ const AuraAssistant: React.FC = () => {
 
               <div className="aura-greeting">
                 <span className="aura-eyebrow">
-                  {micMode === "active" ? "AUDIO INPUT ACTIVE"
-                   : micMode === "standby" ? "STANDING BY"
-                   : "AWAITING INPUT"}
+                  {micMode === "active"
+                    ? "AUDIO INPUT ACTIVE"
+                    : micMode === "standby"
+                    ? "STANDING BY"
+                    : "AWAITING INPUT"}
                 </span>
                 <h2>
-                  {micMode === "active" ? <>I'm <span>listening.</span></>
-                   : micMode === "standby" ? <>Say <span>"Aura, wake up"</span></>
-                   : <>Enter the <span>unknown.</span></>}
+                  {micMode === "active" ? (
+                    <>I'm <span>listening.</span></>
+                  ) : micMode === "standby" ? (
+                    <>Say <span>"Aura, wake up"</span></>
+                  ) : (
+                    <>Enter the <span>unknown.</span></>
+                  )}
                 </h2>
                 <p id="transcriptText">{transcriptText}</p>
               </div>
 
               <div className="aura-status-line">
-                <span className={`aura-status-indicator ${micMode === "active" ? "active" : ""}`} />
+                <span className={`aura-status-indicator ${statusIndicatorClass}`} />
                 <span id="statusText">{statusText}</span>
               </div>
 
-              <button 
-                type="button" 
-                id="micBtn" 
-                className={`aura-mic-button ${isListening ? "is-listening" : ""}`} 
+              <button
+                type="button"
+                id="micBtn"
+                className={`aura-mic-button ${isListening ? "is-listening" : ""}`}
                 onClick={toggleMic}
                 style={{
-                  background: isListening 
-                    ? "linear-gradient(110deg, #dc2626, #ef4444 55%, #b91c1c)" 
+                  background: isListening
+                    ? "linear-gradient(110deg, #dc2626, #ef4444 55%, #b91c1c)"
                     : "",
                   borderColor: isListening ? "rgba(248, 113, 113, 0.6)" : "",
-                  boxShadow: isListening 
-                    ? "0 8px 28px rgba(220, 38, 38, 0.4), inset 0 1px rgba(255, 255, 255, 0.2)" 
+                  boxShadow: isListening
+                    ? "0 8px 28px rgba(220, 38, 38, 0.4), inset 0 1px rgba(255, 255, 255, 0.2)"
                     : "",
-                  animation: isListening ? "auraMicPulse 1.5s infinite" : "none"
+                  animation: isListening ? "auraMicPulse 1.5s infinite" : "none",
                 }}
               >
                 {isListening ? <FaStop /> : <FaMicrophone />}
                 <span>
-                  {isListening ? "STOP LISTENING"
-                   : micMode === "standby" ? "WAKE NOW"
-                   : "INITIATE VOICE"}
+                  {isListening
+                    ? "STOP LISTENING"
+                    : micMode === "standby"
+                    ? "WAKE NOW"
+                    : "INITIATE VOICE"}
                 </span>
               </button>
 
               <p className="aura-mic-hint">
-                {micMode === "active" ? "SPEAK CLEARLY · PRESS TO STOP"
-                 : micMode === "standby" ? "HANDS-FREE ARMED · SAY 'AURA, WAKE UP'"
-                 : "CLICK TO TRANSMIT YOUR COMMAND"}
+                {micMode === "active"
+                  ? "SPEAK CLEARLY · PRESS TO STOP"
+                  : micMode === "standby"
+                  ? "HANDS-FREE ARMED · SAY 'AURA, WAKE UP'"
+                  : "CLICK TO TRANSMIT YOUR COMMAND"}
               </p>
             </div>
           </div>
 
           {embeddedVideo && (
             <div className="aura-embed">
-              <div className="aura-embed-header"><span className="aura-live-dot" /><span>EMBEDDED PLAYER</span><button type="button" className="aura-embed-close" onClick={() => setEmbeddedVideo(null)}>CLOSE</button></div>
-              <div className="aura-embed-frame"><iframe src={embeddedVideo} title="Aura Embedded Player" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen /></div>
+              <div className="aura-embed-header">
+                <span className="aura-live-dot" />
+                <span>EMBEDDED PLAYER</span>
+                <button
+                  type="button"
+                  className="aura-embed-close"
+                  onClick={() => setEmbeddedVideo(null)}
+                >
+                  CLOSE
+                </button>
+              </div>
+              <div className="aura-embed-frame">
+                <iframe
+                  src={embeddedVideo}
+                  title="Aura Embedded Player"
+                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                  allowFullScreen
+                />
+              </div>
             </div>
           )}
         </section>
 
         <aside className="aura-panel aura-results">
           <div className="aura-panel-heading">
-            <div className="aura-section-icon violet"><FaBolt /></div>
-            <div><span className="aura-eyebrow">INTELLIGENCE / 02</span><h2>Command Output</h2></div>
+            <div className="aura-section-icon violet">
+              <FaBolt />
+            </div>
+            <div>
+              <span className="aura-eyebrow">INTELLIGENCE / 02</span>
+              <h2>Command Output</h2>
+            </div>
           </div>
 
           <div className="aura-result-title">
-            <span className="aura-eyebrow">IDENTIFIED SUBJECT</span><h3>{commandDetails.title}</h3><span className="aura-category-tag">{commandDetails.category}</span>
+            <span className="aura-eyebrow">IDENTIFIED SUBJECT</span>
+            <h3>{commandDetails.title}</h3>
+            <span className="aura-category-tag">{commandDetails.category}</span>
           </div>
 
           <div className="aura-result-metrics">
-            <div><span>RESULT STATUS</span><strong>{commandDetails.match}</strong></div>
-            <div><span>OUTPUT TYPE</span><strong>{commandDetails.type.toUpperCase()}</strong></div>
+            <div>
+              <span>RESULT STATUS</span>
+              <strong>{commandDetails.match}</strong>
+            </div>
+            <div>
+              <span>OUTPUT TYPE</span>
+              <strong>{commandDetails.type.toUpperCase()}</strong>
+            </div>
           </div>
 
-          <div className="aura-output-heading"><span>RESPONSE STREAM</span><span className="aura-live-dot" /></div>
+          <div className="aura-output-heading">
+            <span>RESPONSE STREAM</span>
+            <span className="aura-live-dot" />
+          </div>
           <div className="aura-output-content">{renderResult()}</div>
 
-          <div className="aura-output-footer"><FaBolt /><span>AURA RESPONSE ENGINE</span><span>READY</span></div>
-          <div className="aura-command-tip"><span className="aura-tip-symbol">i</span><p>Speak a command to populate this panel with results from your existing command processor.</p></div>
+          <div className="aura-output-footer">
+            <FaBolt />
+            <span>AURA RESPONSE ENGINE</span>
+            <span>READY</span>
+          </div>
+          <div className="aura-command-tip">
+            <span className="aura-tip-symbol">i</span>
+            <p>
+              Speak a command to populate this panel with results from your existing command
+              processor.
+            </p>
+          </div>
         </aside>
       </main>
 
       <footer className="aura-footer">
-        <span>AURA AI <span className="aura-footer-divider">/</span> COMMAND CENTER</span>
-        <span>NEURAL LINK <span className="aura-footer-online">● ACTIVE</span></span>
+        <span>
+          AURA AI <span className="aura-footer-divider">/</span> COMMAND CENTER
+        </span>
+        <span>
+          NEURAL LINK <span className="aura-footer-online">● ACTIVE</span>
+        </span>
         <span>COMMAND ARCHIVE PERSISTS LOCALLY</span>
       </footer>
     </div>
