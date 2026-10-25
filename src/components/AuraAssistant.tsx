@@ -158,15 +158,15 @@ const AuraAssistant: React.FC = () => {
   const handsFreeRef = useRef(false);
   const wakeCooldownRef = useRef(false);
 
-  // ── NEW: single-flight AI request tracking ───────────────────────
+  // ── single-flight AI request tracking ───────────────────────
   const inFlightControllerRef = useRef<AbortController | null>(null);
   const replyTokenRef = useRef(0);
   const lastPartialReplyRef = useRef("");
 
-  // ── NEW: mirror of selectedVoiceName so auraSpeak can stay stable ─
+  // ── mirror of selectedVoiceName so auraSpeak can stay stable ─
   const selectedVoiceNameRef = useRef(selectedVoiceName);
 
-  // ── NEW: ref to latest toggleMic for PiP ──────────────────────────
+  // ── ref to latest toggleMic for PiP ──────────────────────────
   const toggleMicRef = useRef<() => void>(() => {});
 
   const wasOnlineRef = useRef<boolean>(
@@ -682,7 +682,7 @@ const AuraAssistant: React.FC = () => {
 
     // Chrome/Edge/Android silently drop speak() if cancel() happened in the same tick.
     setTimeout(doSpeak, 80);
-  }, []); // ← empty deps: identity stable, reads voice from ref
+  }, []);
 
   // ── Electron alarm IPC ──────────────────────────────────────────
   useEffect(() => {
@@ -811,7 +811,6 @@ const AuraAssistant: React.FC = () => {
       const cleaned = command.trim().replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
       if (!cleaned || cleaned.length < 2) return;
 
-      // Cancel any in-flight request; its .then handlers will see a stale token.
       if (inFlightControllerRef.current) {
         try { inFlightControllerRef.current.abort(); } catch {}
         inFlightControllerRef.current = null;
@@ -863,7 +862,7 @@ const AuraAssistant: React.FC = () => {
         },
       })
         .then((resultMessage) => {
-          if (myToken !== replyTokenRef.current) return; // stale reply — drop it
+          if (myToken !== replyTokenRef.current) return; 
           setUserProfile(getUserProfile());
 
           const all = getReminders().filter((r) => r.active);
@@ -937,7 +936,6 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
-        // ── STOP: cancel speech, cancel AI, KEEP conversation memory ──
         if (STOP_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
           try { inFlightControllerRef.current?.abort(); } catch {}
@@ -975,7 +973,6 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
-        // ── WAIT: stop speech, keep listening, keep memory ─────────
         if (WAIT_WORDS.test(heardText)) {
           try { window.speechSynthesis.cancel(); } catch {}
           if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
@@ -1203,9 +1200,9 @@ const AuraAssistant: React.FC = () => {
 
       pipWindowRef.current = pipWindow;
 
-      [...document.styleSheets].forEach((sheet) => {
+      Array.from(document.styleSheets).forEach((sheet) => {
         try {
-          const css = [...sheet.cssRules].map((rule) => rule.cssText).join("\n");
+          const css = Array.from(sheet.cssRules).map((rule) => rule.cssText).join("\n");
           const style = pipWindow.document.createElement("style");
           style.textContent = css;
           pipWindow.document.head.appendChild(style);
@@ -1295,7 +1292,6 @@ const AuraAssistant: React.FC = () => {
 
       updatePip();
 
-      // Use the ref so we always call the LATEST toggleMic, not a stale closure
       const pipClickHandler = () => toggleMicRef.current();
       pipMic?.addEventListener("click", pipClickHandler);
 
@@ -1426,7 +1422,6 @@ const AuraAssistant: React.FC = () => {
     micMode === "standby" ? "orb-standby" :
     "orb-glow";
 
-  // Derive status indicator class (streaming / active / idle)
   const statusIndicatorClass =
     statusText === "SPEAKING"
       ? "active"
