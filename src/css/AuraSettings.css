@@ -516,15 +516,20 @@
 @media (max-width: 768px) {
   .aura-settings-overlay {
     padding: 0;
+    align-items: flex-start;
+    /* ✅ Fixes the mobile browser address bar cutting off the bottom */
+    height: 100dvh; 
   }
   .aura-settings-shell {
-    height: 100vh;
-    max-height: 100vh;
+    height: 100%;
+    max-height: 100%;
     border-radius: 0;
     border: none;
   }
   .aura-settings-body {
     flex-direction: column;
+    /* ✅ Ensures the body flexes properly inside the shell */
+    overflow: hidden; 
   }
   .aura-settings-nav {
     width: 100%;
@@ -536,9 +541,12 @@
     padding: 8px;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
+    /* ✅ Keeps the nav tabs from shrinking */
+    flex-shrink: 0; 
   }
   .aura-settings-nav button {
     padding: 8px 12px;
+    flex-shrink: 0;
   }
   .aura-settings-nav button span {
     display: none; /* Hide labels on mobile, keep icons */
@@ -548,6 +556,8 @@
   }
   .aura-settings-content {
     padding: 16px;
+    /* ✅ Allows content to scroll independently */
+    overflow-y: auto;
   }
   .aura-settings-row {
     flex-direction: column;
@@ -559,5 +569,10 @@
   .aura-settings-range {
     width: 100%;
     min-width: 100%;
+  }
+  .aura-settings-footer {
+    /* ✅ Prevents the footer from being pushed off screen */
+    flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom, 12px);
   }
 }

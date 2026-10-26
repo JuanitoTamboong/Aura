@@ -1,5 +1,5 @@
 // src/components/AuraSettings.tsx
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { 
   FaXmark, 
   FaGear,
@@ -16,6 +16,7 @@ import {
   loadSettings, saveSettings, resetSettings, factoryReset,
   type AuraSettings as AuraSettingsType
 } from "../settings/AuraSettingsStore";
+import { saveUserProfile } from "../command/AuraConversation";
 import "../css/AuraSettings.css";
 
 import SettingsVoice from "./settings/SettingsVoice";
@@ -47,7 +48,7 @@ interface Props {
   availableVoices: SpeechSynthesisVoice[];
   selectedVoiceName: string;
   onVoiceChange: (name: string) => void;
-  onTestVoice: (voiceName?: string) => void;
+  onTestVoice: (draftVoiceSettings: AuraSettingsType["voice"], useCustomTuning: boolean) => void; 
   pendingAlarms: any[];
   onCancelAlarm: (id: string) => void;
 }
@@ -58,10 +59,8 @@ const AuraSettings: React.FC<Props> = ({
   pendingAlarms, onCancelAlarm,
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>("voice");
-  const [settings, setSettings] = useState<AuraSettingsType>(() => loadSettings());
-  const saveTimerRef = useRef<any>(null);
+  const [draftSettings, setDraftSettings] = useState<AuraSettingsType>(() => loadSettings());
 
-  // ✅ State for our custom modal
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
     message: string;
@@ -69,32 +68,28 @@ const AuraSettings: React.FC<Props> = ({
     onConfirm: () => void;
   } | null>(null);
 
-  // Sync local settings state if the parent lightMode prop changes
-  useEffect(() => {
-    setSettings((prev) => {
-      if (prev.appearance.lightMode === lightMode) return prev;
-      return {
-        ...prev,
-        appearance: { ...prev.appearance, lightMode }
-      };
+  const handleDone = () => {
+    // ✅ Permanently save the profile (name and facts) only when Done is clicked
+    saveUserProfile({ 
+      name: draftSettings.profile.name, 
+      facts: draftSettings.profile.facts 
     });
-  }, [lightMode]);
 
-  // Auto-save with 300ms debounce
-  useEffect(() => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveSettings(settings);
-      onChange(settings);
-    }, 300);
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, [settings, onChange]);
+    // Save the main settings (theme, voice, etc.)
+    saveSettings(draftSettings);
+    onChange(draftSettings);
+    onClose();
+  };
+
+  const handleCancel = () => {
+    const originalSettings = loadSettings();
+    onChange(originalSettings); 
+    onClose();
+  };
 
   const patch = useCallback(
     <K extends keyof AuraSettingsType>(section: K, value: Partial<AuraSettingsType[K]>) => {
-      setSettings((prev) => ({ ...prev, [section]: { ...prev[section], ...value } }));
+      setDraftSettings((prev) => ({ ...prev, [section]: { ...prev[section], ...value } }));
     },
     []
   );
@@ -105,7 +100,7 @@ const AuraSettings: React.FC<Props> = ({
       message: "Reset all settings to defaults? Your data is kept.",
       onConfirm: () => {
         const fresh = resetSettings();
-        setSettings(fresh);
+        setDraftSettings(fresh);
         saveSettings(fresh);
         onChange(fresh);
         setConfirmModal(null);
@@ -131,14 +126,19 @@ const AuraSettings: React.FC<Props> = ({
     });
   };
 
+  const handleAppearanceChange = (newAppearance: Partial<AuraSettingsType["appearance"]>) => {
+    patch("appearance", newAppearance);
+    onChange({ ...loadSettings(), appearance: { ...draftSettings.appearance, ...newAppearance } });
+  };
+
   return (
-    <div className="aura-settings-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="aura-settings-overlay" onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
       <div className={`aura-settings-shell ${lightMode ? "" : "is-dark"}`}>
         
         {/* HEADER */}
         <div className="aura-settings-header">
           <h2><FaGear style={{ marginRight: 8 }} /> AURA SETTINGS</h2>
-          <button className="aura-settings-close" onClick={onClose} aria-label="Close settings">
+          <button className="aura-settings-close" onClick={handleCancel} aria-label="Close settings">
             <FaXmark />
           </button>
         </div>
@@ -161,34 +161,44 @@ const AuraSettings: React.FC<Props> = ({
           <div className="aura-settings-content">
             {activeTab === "voice" && (
               <SettingsVoice 
-                settings={settings.voice} patch={(v) => patch("voice", v)} 
-                availableVoices={availableVoices} selectedVoiceName={selectedVoiceName} 
-                onVoiceChange={onVoiceChange} onTestVoice={onTestVoice} 
+                settings={draftSettings.voice} 
+                patch={(v) => patch("voice", v)} 
+                availableVoices={availableVoices} 
+                selectedVoiceName={draftSettings.voice.selectedVoiceName} 
+                onVoiceChange={(name) => patch("voice", { selectedVoiceName: name })} 
+                onTestVoice={onTestVoice} 
               />
             )}
             {activeTab === "profile" && (
-              <SettingsProfile settings={settings.profile} patch={(v) => patch("profile", v)} />
+              <SettingsProfile settings={draftSettings.profile} patch={(v) => patch("profile", v)} />
             )}
             {activeTab === "commands" && <SettingsCommands />}
             {activeTab === "appearance" && (
-              <SettingsAppearance settings={settings.appearance} patch={(v) => patch("appearance", v)} />
+              <SettingsAppearance 
+                settings={draftSettings.appearance} 
+                patch={handleAppearanceChange} 
+              />
             )}
             {activeTab === "alarms" && (
               <SettingsAlarms 
-                settings={settings.alarms} patch={(v) => patch("alarms", v)} 
-                pendingAlarms={pendingAlarms} onCancelAlarm={onCancelAlarm} 
+                settings={draftSettings.alarms} 
+                patch={(v) => patch("alarms", v)} 
+                pendingAlarms={pendingAlarms} 
+                onCancelAlarm={onCancelAlarm} 
               />
             )}
             {activeTab === "privacy" && (
               <SettingsPrivacy 
-                settings={settings.privacy} patch={(v) => patch("privacy", v)} 
+                settings={draftSettings.privacy} 
+                patch={(v) => patch("privacy", v)} 
                 onFactoryReset={handleFactoryReset} 
               />
             )}
             {activeTab === "about" && <SettingsAbout />}
             {activeTab === "advanced" && (
               <SettingsAdvanced 
-                settings={settings.advanced} patch={(v) => patch("advanced", v)} 
+                settings={draftSettings.advanced} 
+                patch={(v) => patch("advanced", v)} 
                 onResetAll={handleResetAll} 
               />
             )}
@@ -200,12 +210,12 @@ const AuraSettings: React.FC<Props> = ({
           <button className="aura-settings-btn danger" onClick={handleFactoryReset}>
             Factory Reset
           </button>
-          <button className="aura-settings-btn primary" onClick={onClose}>
+          <button className="aura-settings-btn primary" onClick={handleDone}>
             Done
           </button>
         </div>
 
-        {/* ✅ CUSTOM CONFIRMATION MODAL */}
+        {/* CUSTOM CONFIRMATION MODAL */}
         {confirmModal && (
           <div 
             className="aura-confirm-overlay" 

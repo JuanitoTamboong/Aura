@@ -1,3 +1,4 @@
+// src/components/settings/SettingsVoice.tsx
 import React from "react";
 import type { AuraSettings } from "../../settings/AuraSettingsStore";
 
@@ -7,7 +8,7 @@ interface Props {
   availableVoices: SpeechSynthesisVoice[];
   selectedVoiceName: string;
   onVoiceChange: (name: string) => void;
-  onTestVoice: (voiceName?: string) => void;
+  onTestVoice: (draftVoice: AuraSettings["voice"], useCustomTuning: boolean) => void; 
 }
 
 const SettingsVoice: React.FC<Props> = ({
@@ -19,7 +20,11 @@ const SettingsVoice: React.FC<Props> = ({
       <p className="aura-settings-section-desc">Pick the voice Aura uses to speak.</p>
       <div className="aura-settings-row">
         <span className="aura-settings-row-label">Browser voice</span>
-        <select className="aura-settings-select" value={selectedVoiceName} onChange={(e) => onVoiceChange(e.target.value)}>
+        <select 
+          className="aura-settings-select" 
+          value={settings.selectedVoiceName} 
+          onChange={(e) => patch({ selectedVoiceName: e.target.value })}
+        >
           <option value="">Browser Default</option>
           {availableVoices.map((v) => (
             <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
@@ -28,7 +33,10 @@ const SettingsVoice: React.FC<Props> = ({
       </div>
       <div className="aura-settings-row">
         <span />
-        <button className="aura-settings-btn" onClick={() => onTestVoice()}>Test Voice</button>
+        {/* ✅ Pass `false` to force original tuning */}
+        <button className="aura-settings-btn" onClick={() => onTestVoice(settings, false)}>
+          Test Voice
+        </button>
       </div>
     </div>
 
@@ -41,13 +49,23 @@ const SettingsVoice: React.FC<Props> = ({
       ].map((s) => (
         <div key={s.key} className="aura-settings-row">
           <span className="aura-settings-row-label">{s.label}: {(settings as any)[s.key].toFixed(2)}</span>
-          <input type="range" className="aura-settings-range" min={s.min} max={s.max} step={s.step} 
-                 value={(settings as any)[s.key]} onChange={(e) => patch({ [s.key]: Number(e.target.value) })} />
+          <input 
+            type="range" 
+            className="aura-settings-range" 
+            min={s.min} 
+            max={s.max} 
+            step={s.step} 
+            value={(settings as any)[s.key]} 
+            onChange={(e) => patch({ [s.key]: Number(e.target.value) })} 
+          />
         </div>
       ))}
       <div className="aura-settings-row">
         <span />
-        <button className="aura-settings-btn" onClick={() => onTestVoice()}>Preview</button>
+        {/* ✅ Pass `true` to use custom tuning */}
+        <button className="aura-settings-btn" onClick={() => onTestVoice(settings, true)}>
+          Preview
+        </button>
       </div>
     </div>
 
@@ -65,8 +83,11 @@ const SettingsVoice: React.FC<Props> = ({
           <div className="aura-settings-row-label">Wake word</div>
           <div className="aura-settings-row-hint">Say "Hey {settings.wakeWord}" to wake.</div>
         </div>
-        <input className="aura-settings-input" value={settings.wakeWord} 
-               onChange={(e) => patch({ wakeWord: e.target.value.replace(/[^a-zA-Z ]/g, "").slice(0, 20) })} />
+        <input 
+          className="aura-settings-input" 
+          value={settings.wakeWord} 
+          onChange={(e) => patch({ wakeWord: e.target.value.replace(/[^a-zA-Z ]/g, "").slice(0, 20) })} 
+        />
       </div>
     </div>
   </>

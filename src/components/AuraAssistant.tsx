@@ -1,3 +1,4 @@
+// src/components/AuraAssistant.tsx
 import React, {
   useState,
   useRef,
@@ -197,7 +198,6 @@ const AuraAssistant: React.FC = () => {
   const commandDetailsRef = useRef(commandDetails);
   const toggleMicRef = useRef<() => void>(() => {});
   
-  // ✅ Keep a live ref of settings so background tasks (animation, speak) get the latest data
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
@@ -242,7 +242,6 @@ const AuraAssistant: React.FC = () => {
     }
   };
 
-  // ✅ PRIVACY: Only save history if setting is true
   useEffect(() => {
     if (settings.privacy.persistHistory) {
       try {
@@ -253,7 +252,6 @@ const AuraAssistant: React.FC = () => {
     }
   }, [history, settings.privacy.persistHistory]);
 
-  // ✅ PRIVACY: Only save workspace if setting is true
   useEffect(() => {
     if (settings.privacy.persistWorkspace) {
       try {
@@ -303,7 +301,6 @@ const AuraAssistant: React.FC = () => {
     body.classList[method]("aura-dark-root");
   }, [lightMode]);
 
-  // ✅ ACCENT COLOR ENGINE: Injects CSS variables globally
   useEffect(() => {
     const ACCENT_COLORS: Record<string, string> = {
       violet: "#8b5cf6", cyan: "#22d3ee", pink: "#ec4899", amber: "#f59e0b", emerald: "#10b981",
@@ -585,7 +582,6 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
-        // ✅ APPLY SETTINGS: Skip drawing particles if effects are disabled
         if (settingsRef.current.appearance.reduceMotion || !settingsRef.current.appearance.showParticles) {
           frame = targetWindow.requestAnimationFrame(draw);
           animRef.current = frame;
@@ -630,7 +626,6 @@ const AuraAssistant: React.FC = () => {
             ctx.fillStyle = `rgba(80, 210, 255, ${pulse})`;
             ctx.shadowColor = "#22d3ee";
           } else {
-            // ✅ ACCENT COLOR APPLIED HERE
             ctx.fillStyle = activeAccent; 
             ctx.shadowColor = activeAccent;
           }
@@ -690,10 +685,9 @@ const AuraAssistant: React.FC = () => {
     }
   }, [showResponseModal, startAnimation]);
 
-  const auraSpeak = useCallback((text: string, overrideVoiceName?: string) => {
+  const auraSpeak = useCallback((text: string, overrideVoiceName?: string, temporaryOverrides?: Partial<AuraSettingsType["voice"]>) => {
     if (isWorkspaceOpenRef.current) return;
 
-    // ✅ MUTE GUARD
     if (settingsRef.current.voice.muteAura) {
       isSpeakingRef.current = false;
       ignoreMicRef.current = false;
@@ -737,10 +731,14 @@ const AuraAssistant: React.FC = () => {
       setStatusText("SPEAKING");
 
       const utterance = new SpeechSynthesisUtterance(text);
-      // ✅ PULL LIVE SETTINGS FROM REF
-      utterance.pitch = settingsRef.current.voice.pitch ?? 0.85;
-      utterance.rate = settingsRef.current.voice.rate ?? 0.95;
-      utterance.volume = settingsRef.current.voice.volume ?? 1;
+      
+      const currentVoiceSettings = temporaryOverrides 
+        ? { ...settingsRef.current.voice, ...temporaryOverrides }
+        : settingsRef.current.voice;
+
+      utterance.pitch = currentVoiceSettings.pitch ?? 1;
+      utterance.rate = currentVoiceSettings.rate ?? 1;
+      utterance.volume = currentVoiceSettings.volume ?? 1;
 
       if (voice) utterance.voice = voice;
 
@@ -802,7 +800,7 @@ const AuraAssistant: React.FC = () => {
         try {
           const audio = new Audio(alarmSound);
           audio.loop = true;
-          audio.volume = settingsRef.current.alarms.volume ?? 1; // ✅ APPLY ALARM VOLUME
+          audio.volume = settingsRef.current.alarms.volume ?? 1;
           alarmAudioRef.current = audio;
           audio.play().catch(() => {});
         } catch {}
@@ -2338,7 +2336,17 @@ const AuraAssistant: React.FC = () => {
             setSelectedVoiceName(name);
             settings.voice.selectedVoiceName = name; 
           }}
-          onTestVoice={(voiceName) => auraSpeak("This is how I sound, Sir.", voiceName)}
+          onTestVoice={(draftVoiceSettings, useCustomTuning) => {
+            const voiceNameStr = draftVoiceSettings?.selectedVoiceName;
+            
+            // ✅ If useCustomTuning is true, use the sliders.
+            // ✅ If false (Test Voice), force rate/pitch/volume to 1.
+            const finalOverrides = useCustomTuning 
+              ? draftVoiceSettings 
+              : { ...draftVoiceSettings, rate: 1, pitch: 1, volume: 1 };
+
+            auraSpeak("This is how I sound, Sir.", voiceNameStr, finalOverrides);
+          }}
           pendingAlarms={pendingAlarms}
           onCancelAlarm={handleCancelAlarm}
         />
