@@ -1,7 +1,10 @@
 // src/components/settings/SettingsProfile.tsx
 import React, { useState, useEffect } from "react";
 import { 
-  clearUserMemory, getConversationTurns, clearConversation 
+  clearUserMemory, 
+  getConversationTurns, 
+  clearConversation,
+  getUserProfile, // ✅ ADD THIS IMPORT
 } from "../../command/AuraConversation";
 import type { AuraSettings } from "../../settings/AuraSettingsStore";
 
@@ -14,19 +17,42 @@ const SettingsProfile: React.FC<Props> = ({ settings, patch }) => {
   const [newFact, setNewFact] = useState("");
   const [turnCount, setTurnCount] = useState(0);
 
-  // Only refresh the conversation count, not the profile itself
   const refresh = () => { 
     setTurnCount(getConversationTurns().length); 
   };
   
-  useEffect(() => { refresh(); }, []);
+  // ✅ FIX: When the Profile tab opens, sync the draft state with the ACTUAL saved data.
+  // This catches facts Aura saved during voice commands while settings was closed.
+  useEffect(() => {
+    refresh();
+    
+    // Read the fresh profile from localStorage
+    const liveProfile = getUserProfile();
+    
+    // If the live saved data differs from the draft, patch the draft
+    const liveFacts = liveProfile.facts || [];
+    const draftFacts = settings.facts || [];
+    const liveName = liveProfile.name || "Sir";
+    
+    const factsDifferent = 
+      liveFacts.length !== draftFacts.length ||
+      liveFacts.some((f, i) => f !== draftFacts[i]);
+    
+    if (factsDifferent || liveName !== settings.name) {
+      patch({ 
+        name: liveName, 
+        facts: liveFacts 
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAddFact = () => {
     const trimmed = newFact.trim();
     if (!trimmed) return;
     const facts = settings.facts || [];
     if (!facts.includes(trimmed)) { 
-      // ✅ Only updates the draft state
+      // ✅ Only updates the draft state — Done button will persist it
       patch({ facts: [...facts, trimmed] }); 
     }
     setNewFact("");
@@ -49,7 +75,6 @@ const SettingsProfile: React.FC<Props> = ({ settings, patch }) => {
         <h3>Identity</h3>
         <div className="aura-settings-row">
           <span className="aura-settings-row-label">Your name</span>
-          {/* ✅ Only updates the draft state */}
           <input 
             className="aura-settings-input" 
             value={settings.name} 
@@ -68,7 +93,6 @@ const SettingsProfile: React.FC<Props> = ({ settings, patch }) => {
           (settings.facts || []).map((fact, i) => (
             <div key={i} className="aura-fact-row">
               <span>{fact}</span>
-              {/* ✅ Only updates the draft state */}
               <button onClick={() => { 
                 patch({ facts: settings.facts.filter((f) => f !== fact) }); 
               }}>
