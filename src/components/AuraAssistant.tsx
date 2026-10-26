@@ -46,7 +46,11 @@ import {
 
 // ── SETTINGS IMPORTS ──
 import AuraSettings from "./AuraSettings";
-import { loadSettings, type AuraSettings as AuraSettingsType } from "../settings/AuraSettingsStore";
+import {
+  loadSettings,
+  saveSettings,
+  type AuraSettings as AuraSettingsType,
+} from "../settings/AuraSettingsStore";
 
 import alarmSound from "../assets/sound/alarm-clock.mp3";
 
@@ -113,9 +117,20 @@ const AuraAssistant: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<AuraSettingsType>(() => loadSettings());
 
-  const [lightMode, setLightMode] = useState(() => {
-    return settings.appearance.lightMode;
-  });
+  const lightMode = settings.appearance.lightMode;
+
+  const setLightMode = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setSettings((prev) => {
+      const resolved = typeof next === "function" ? (next as any)(prev.appearance.lightMode) : next;
+      if (prev.appearance.lightMode === resolved) return prev;
+      const nextSettings: AuraSettingsType = {
+        ...prev,
+        appearance: { ...prev.appearance, lightMode: resolved },
+      };
+      saveSettings(nextSettings);
+      return nextSettings;
+    });
+  }, []);
 
   const [themeReady, setThemeReady] = useState(false);
   const [pipOpen, setPipOpen] = useState(false);
@@ -301,18 +316,32 @@ const AuraAssistant: React.FC = () => {
     body.classList[method]("aura-dark-root");
   }, [lightMode]);
 
+  // ✅ FIXED: Force the accent color on the root element
   useEffect(() => {
     const ACCENT_COLORS: Record<string, string> = {
       violet: "#8b5cf6", cyan: "#22d3ee", pink: "#ec4899", amber: "#f59e0b", emerald: "#10b981",
     };
+    
     let color = ACCENT_COLORS[settings.appearance.accent];
     if (settings.appearance.accent === "custom") {
       color = settings.appearance.customAccent;
     }
-    if (color) {
-      document.documentElement.style.setProperty("--aura-violet", color);
-    }
+    
+    // Force fallback to Violet if something is missing
+    if (!color) color = "#8b5cf6";
+
+    // This overwrites the CSS variable globally
+    document.documentElement.style.setProperty("--aura-violet", color);
+    
   }, [settings.appearance.accent, settings.appearance.customAccent]);
+
+  useEffect(() => {
+    if (pipWindowRef.current) {
+      try {
+        pipWindowRef.current.document.body.classList.toggle("aura-dark-pip", !lightMode);
+      } catch {}
+    }
+  }, [lightMode]);
 
   useEffect(() => {
     if (bootStage !== "ready") return;
@@ -451,10 +480,6 @@ const AuraAssistant: React.FC = () => {
     const name = profile.name || "Sir";
     setTranscriptText(`Awaiting your command, ${name}.`);
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("aura_light_mode", String(lightMode));
-  }, [lightMode]);
 
   useEffect(() => {
     if (selectedVoiceName) {
@@ -1537,6 +1562,7 @@ const AuraAssistant: React.FC = () => {
       pipWindow.document.head.appendChild(style);
 
       if (!lightMode) pipWindow.document.body.classList.add("aura-dark-pip");
+      else pipWindow.document.body.classList.remove("aura-dark-pip");
 
       const container = pipWindow.document.createElement("div");
       container.className = "aura-pip";
@@ -1788,14 +1814,14 @@ const AuraAssistant: React.FC = () => {
           <div
             style={{
               background: lightMode ? "rgba(255, 255, 255, 0.95)" : "rgba(15, 12, 32, 0.95)",
-              border: "1px solid rgba(139, 92, 246, 0.4)",
+              border: "1px solid var(--aura-violet)",
               borderRadius: "24px",
               width: "100%",
               maxWidth: isMobile ? "100%" : "900px",
               maxHeight: "90vh",
               display: "flex",
               flexDirection: isMobile ? "column" : "row",
-              boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px rgba(139, 92, 246, 0.15)",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px var(--aura-violet)",
               overflow: "hidden",
               animation: "auraModalPop 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
               transition: "background 450ms ease, border-color 450ms ease",
@@ -1809,12 +1835,13 @@ const AuraAssistant: React.FC = () => {
                 flexDirection: isMobile ? "row" : "column",
                 alignItems: "center",
                 justifyContent: "center",
-                background: "linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(0,0,0,0) 100%)",
-                borderRight: isMobile ? "none" : "1px solid rgba(139, 92, 246, 0.2)",
-                borderBottom: isMobile ? "1px solid rgba(139, 92, 246, 0.2)" : "none",
+                background: "linear-gradient(135deg, var(--aura-violet) 0%, rgba(0,0,0,0) 100%)",
+                borderRight: isMobile ? "none" : "1px solid var(--aura-violet)",
+                borderBottom: isMobile ? "1px solid var(--aura-violet)" : "none",
                 padding: isMobile ? "15px" : "40px",
                 position: "relative",
                 gap: "15px",
+                opacity: 0.1,
               }}
             >
               <div
@@ -1852,7 +1879,7 @@ const AuraAssistant: React.FC = () => {
                     marginTop: "4px",
                     display: "block",
                     fontSize: "10px",
-                    color: "#a78bfa",
+                    color: "var(--aura-violet)",
                     letterSpacing: "0.2em",
                     fontFamily: "var(--aura-display)",
                   }}
@@ -1878,13 +1905,13 @@ const AuraAssistant: React.FC = () => {
                   justifyContent: "space-between",
                   alignItems: "flex-start",
                   padding: "20px",
-                  borderBottom: "1px solid rgba(139, 92, 246, 0.15)",
+                  borderBottom: "1px solid var(--aura-violet)",
                 }}
               >
                 <div>
                   <span
                     className="aura-eyebrow"
-                    style={{ color: "#a78bfa", letterSpacing: "0.15em" }}
+                    style={{ color: "var(--aura-violet)", letterSpacing: "0.15em" }}
                   >
                     IDENTIFIED SUBJECT
                   </span>
@@ -1905,9 +1932,10 @@ const AuraAssistant: React.FC = () => {
                     setManualOpen(false);
                   }}
                   style={{
-                    background: "rgba(139, 92, 246, 0.1)",
-                    border: "1px solid rgba(139, 92, 246, 0.3)",
-                    color: "#a78bfa",
+                    background: "var(--aura-violet)",
+                    opacity: 0.2,
+                    border: "1px solid var(--aura-violet)",
+                    color: "var(--aura-violet)",
                     width: "36px",
                     height: "36px",
                     borderRadius: "50%",
@@ -2328,19 +2356,21 @@ const AuraAssistant: React.FC = () => {
           onClose={() => setSettingsOpen(false)}
           onChange={(newSettings) => {
             setSettings(newSettings);
-            setLightMode(newSettings.appearance.lightMode);
+            saveSettings(newSettings);
           }}
           availableVoices={availableVoices}
           selectedVoiceName={selectedVoiceName}
           onVoiceChange={(name) => {
             setSelectedVoiceName(name);
-            settings.voice.selectedVoiceName = name; 
+            setSettings((prev) => {
+              const next = { ...prev, voice: { ...prev.voice, selectedVoiceName: name } };
+              saveSettings(next);
+              return next;
+            });
           }}
           onTestVoice={(draftVoiceSettings, useCustomTuning) => {
             const voiceNameStr = draftVoiceSettings?.selectedVoiceName;
             
-            // ✅ If useCustomTuning is true, use the sliders.
-            // ✅ If false (Test Voice), force rate/pitch/volume to 1.
             const finalOverrides = useCustomTuning 
               ? draftVoiceSettings 
               : { ...draftVoiceSettings, rate: 1, pitch: 1, volume: 1 };

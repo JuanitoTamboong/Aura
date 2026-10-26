@@ -1,3 +1,4 @@
+// src/components/AuraWorkspace.tsx
 import React, { useState, useRef, useEffect } from "react";
 import { FaPaperPlane, FaStop, FaTrash, FaXmark, FaPlus, FaFileLines } from "react-icons/fa6";
 import ReactMarkdown from "react-markdown";
@@ -12,8 +13,7 @@ export interface ChatMessage {
   timestamp: number;
   streaming?: boolean;
   category?: string;
-  // Updated to include "document"
-  mediaItems?: Array<{ url: string; type: "image" | "video" | "document" }>; 
+  mediaItems?: Array<{ url: string; type: "image" | "video" | "document" }>;
 }
 
 interface AuraWorkspaceProps {
@@ -53,19 +53,16 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Auto-scroll to bottom when new messages arrive / streaming updates
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Hide suggestions once the user sends something
   useEffect(() => {
     if (messages.length > 0) setShowSuggestions(false);
   }, [messages.length]);
@@ -75,9 +72,7 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
     if (!trimmed || isProcessing) return;
     onSend(trimmed);
     setInput("");
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
-    }
+    if (inputRef.current) inputRef.current.style.height = "auto";
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -97,9 +92,14 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
   const formatTime = (ts: number) =>
     new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  // ✅ Always apply BOTH classes based on theme — no ambiguity, no fallback.
   return (
-    <div className={`aura-workspace ${lightMode ? "aura-workspace-light" : ""}`}>
-      {/* ── Header ───────────────────────────────────────────── */}
+    <div
+      className={`aura-workspace ${
+        lightMode ? "aura-workspace-light" : "aura-workspace-dark"
+      }`}
+      data-theme={lightMode ? "light" : "dark"}
+    >
       <div className="aura-ws-header">
         <div className="aura-ws-header-left">
           <div className="aura-ws-icon">
@@ -141,7 +141,6 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* ── Message Stream ───────────────────────────────────── */}
       <div className="aura-ws-stream" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="aura-ws-empty">
@@ -188,24 +187,21 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
                 <div className="aura-ws-bubble">
                   {msg.role === "assistant" ? (
                     <div className="aura-ws-markdown">
-                      <ReactMarkdown 
+                      <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
                           a: ({ node, ...props }) => (
                             <a {...props} target="_blank" rel="noopener noreferrer" />
-                          )
+                          ),
                         }}
                       >
                         {msg.content || "…"}
                       </ReactMarkdown>
 
-                      {/* Render Media Items (Images/Videos/Documents) inside the bubble */}
                       {msg.mediaItems && msg.mediaItems.length > 0 && (
                         <div className="aura-ws-media-grid">
                           {msg.mediaItems.map((media, idx) => {
-                            // Check if it actually has a video extension to prevent broken players
                             const isPlayableVideo = media.url.match(/\.(mp4|webm|ogg|mov)$/i);
-                            
                             return (
                               <div key={idx} className="aura-ws-media-item">
                                 {media.type === "image" ? (
@@ -213,7 +209,6 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
                                 ) : isPlayableVideo ? (
                                   <video src={media.url} controls />
                                 ) : (
-                                  // Fallback for documents or unsupported video formats
                                   <div className="aura-ws-doc-file">
                                     <FaFileLines size={30} />
                                     <a href={media.url} target="_blank" rel="noreferrer">
@@ -259,14 +254,15 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
             </div>
             <div className="aura-ws-bubble-wrap">
               <div className="aura-ws-bubble aura-ws-typing">
-                <span /><span /><span />
+                <span />
+                <span />
+                <span />
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── Live transcript chip ─────────────────────────────── */}
       {isListening && transcriptText && (
         <div className="aura-ws-transcript">
           <span className="aura-ws-transcript-dot" />
@@ -274,7 +270,6 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
         </div>
       )}
 
-      {/* ── Composer ─────────────────────────────────────────── */}
       <div className="aura-ws-composer">
         <div className="aura-ws-composer-inner">
           <textarea

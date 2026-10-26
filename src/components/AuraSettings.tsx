@@ -1,5 +1,5 @@
 // src/components/AuraSettings.tsx
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { 
   FaXmark, 
   FaGear,
@@ -68,14 +68,24 @@ const AuraSettings: React.FC<Props> = ({
     onConfirm: () => void;
   } | null>(null);
 
+  useEffect(() => {
+    setDraftSettings(loadSettings());
+  }, []);
+
+  const persistAndNotify = useCallback(
+    (next: AuraSettingsType) => {
+      setDraftSettings(next);
+      saveSettings(next);
+      onChange(next);
+    },
+    [onChange]
+  );
+
   const handleDone = () => {
-    // ✅ Permanently save the profile (name and facts) only when Done is clicked
     saveUserProfile({ 
       name: draftSettings.profile.name, 
       facts: draftSettings.profile.facts 
     });
-
-    // Save the main settings (theme, voice, etc.)
     saveSettings(draftSettings);
     onChange(draftSettings);
     onClose();
@@ -83,7 +93,7 @@ const AuraSettings: React.FC<Props> = ({
 
   const handleCancel = () => {
     const originalSettings = loadSettings();
-    onChange(originalSettings); 
+    onChange(originalSettings);
     onClose();
   };
 
@@ -100,9 +110,7 @@ const AuraSettings: React.FC<Props> = ({
       message: "Reset all settings to defaults? Your data is kept.",
       onConfirm: () => {
         const fresh = resetSettings();
-        setDraftSettings(fresh);
-        saveSettings(fresh);
-        onChange(fresh);
+        persistAndNotify(fresh);
         setConfirmModal(null);
       }
     });
@@ -126,16 +134,20 @@ const AuraSettings: React.FC<Props> = ({
     });
   };
 
-  const handleAppearanceChange = (newAppearance: Partial<AuraSettingsType["appearance"]>) => {
-    patch("appearance", newAppearance);
-    onChange({ ...loadSettings(), appearance: { ...draftSettings.appearance, ...newAppearance } });
+  const handleAppearanceChange = (
+    newAppearance: Partial<AuraSettingsType["appearance"]>
+  ) => {
+    const nextSettings: AuraSettingsType = {
+      ...draftSettings,
+      appearance: { ...draftSettings.appearance, ...newAppearance },
+    };
+    persistAndNotify(nextSettings);
   };
 
   return (
     <div className="aura-settings-overlay" onClick={(e) => { if (e.target === e.currentTarget) handleCancel(); }}>
       <div className={`aura-settings-shell ${lightMode ? "" : "is-dark"}`}>
         
-        {/* HEADER */}
         <div className="aura-settings-header">
           <h2><FaGear style={{ marginRight: 8 }} /> AURA SETTINGS</h2>
           <button className="aura-settings-close" onClick={handleCancel} aria-label="Close settings">
@@ -143,7 +155,6 @@ const AuraSettings: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* BODY */}
         <div className="aura-settings-body">
           <nav className="aura-settings-nav">
             {TABS.map((tab) => (
@@ -205,7 +216,6 @@ const AuraSettings: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* FOOTER */}
         <div className="aura-settings-footer">
           <button className="aura-settings-btn danger" onClick={handleFactoryReset}>
             Factory Reset
@@ -215,7 +225,6 @@ const AuraSettings: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* CUSTOM CONFIRMATION MODAL */}
         {confirmModal && (
           <div 
             className="aura-confirm-overlay" 
