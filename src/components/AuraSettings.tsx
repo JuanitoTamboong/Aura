@@ -18,7 +18,6 @@ import {
 } from "../settings/AuraSettingsStore";
 import "../css/AuraSettings.css";
 
-// ── IMPORT THE SEPARATE TAB COMPONENTS ──
 import SettingsVoice from "./settings/SettingsVoice";
 import SettingsProfile from "./settings/SettingsProfile";
 import SettingsCommands from "./settings/SettingsCommands";
@@ -62,7 +61,15 @@ const AuraSettings: React.FC<Props> = ({
   const [settings, setSettings] = useState<AuraSettingsType>(() => loadSettings());
   const saveTimerRef = useRef<any>(null);
 
-  // ✅ FIX: Sync local settings state if the parent lightMode prop changes
+  // ✅ State for our custom modal
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    message: string;
+    isDanger?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
+
+  // Sync local settings state if the parent lightMode prop changes
   useEffect(() => {
     setSettings((prev) => {
       if (prev.appearance.lightMode === lightMode) return prev;
@@ -93,22 +100,39 @@ const AuraSettings: React.FC<Props> = ({
   );
 
   const handleResetAll = () => {
-    if (!window.confirm("Reset all settings to defaults? Your data is kept.")) return;
-    const fresh = resetSettings();
-    setSettings(fresh);
-    saveSettings(fresh);
-    onChange(fresh);
+    setConfirmModal({
+      title: "Reset Settings",
+      message: "Reset all settings to defaults? Your data is kept.",
+      onConfirm: () => {
+        const fresh = resetSettings();
+        setSettings(fresh);
+        saveSettings(fresh);
+        onChange(fresh);
+        setConfirmModal(null);
+      }
+    });
   };
 
   const handleFactoryReset = () => {
-    if (!window.confirm("Factory reset — this removes ALL Aura data and reloads. Continue?")) return;
-    if (!window.confirm("Are you absolutely sure? This cannot be undone?")) return;
-    factoryReset();
+    setConfirmModal({
+      title: "Factory Reset",
+      message: "This removes ALL Aura data and reloads. Continue?",
+      isDanger: true,
+      onConfirm: () => {
+        setConfirmModal({
+          title: "Are you absolutely sure?",
+          message: "This cannot be undone. All history, settings, and memory will be lost.",
+          isDanger: true,
+          onConfirm: () => {
+            factoryReset();
+          }
+        });
+      }
+    });
   };
 
   return (
     <div className="aura-settings-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      {/* ✅ The class instantly reacts to lightMode props */}
       <div className={`aura-settings-shell ${lightMode ? "" : "is-dark"}`}>
         
         {/* HEADER */}
@@ -180,6 +204,42 @@ const AuraSettings: React.FC<Props> = ({
             Done
           </button>
         </div>
+
+        {/* ✅ CUSTOM CONFIRMATION MODAL */}
+        {confirmModal && (
+          <div 
+            className="aura-confirm-overlay" 
+            onClick={(e) => { if (e.target === e.currentTarget) setConfirmModal(null); }}
+          >
+            <div className="aura-confirm-box">
+              <h3 style={{ 
+                marginTop: 0, 
+                fontSize: "16px",
+                color: confirmModal.isDanger ? "#f87171" : "var(--aura-violet)" 
+              }}>
+                {confirmModal.title}
+              </h3>
+              <p style={{ fontSize: "13px", opacity: 0.8, lineHeight: 1.5, marginBottom: 24 }}>
+                {confirmModal.message}
+              </p>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button 
+                  className="aura-settings-btn" 
+                  onClick={() => setConfirmModal(null)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className={`aura-settings-btn ${confirmModal.isDanger ? "danger" : "primary"}`} 
+                  onClick={confirmModal.onConfirm}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

@@ -477,6 +477,41 @@
   background: var(--aura-violet) !important;
 }
 
+/* =========================================
+   CUSTOM CONFIRM MODAL
+   ========================================= */
+.aura-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 3, 15, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  border-radius: 20px; /* Matches the settings shell */
+  animation: auraBackdropIn 200ms ease-out forwards;
+}
+
+.aura-confirm-box {
+  background: #ffffff;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2), 0 0 40px rgba(139, 92, 246, 0.1);
+  animation: auraModalPop 250ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  color: #21183c;
+}
+
+.is-dark .aura-confirm-box {
+  background: #1a1533;
+  color: #f5f3ff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 40px rgba(139, 92, 246, 0.15);
+}
+
 /* ── MOBILE RESPONSIVENESS ── */
 @media (max-width: 768px) {
   .aura-settings-overlay {
