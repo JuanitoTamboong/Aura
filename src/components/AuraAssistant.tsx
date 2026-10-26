@@ -144,7 +144,7 @@ const AuraAssistant: React.FC = () => {
 
   // ✅ Drag & Resize State
   const [embedPos, setEmbedPos] = useState({ x: 0, y: 0 });
-  const [embedSize, setEmbedSize] = useState({ w: 650, h: 400 }); // Slightly taller to fit handle
+  const [embedSize, setEmbedSize] = useState({ w: 650, h: 400 }); 
   const isDraggingRef = useRef(false);
   const isResizingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
@@ -256,7 +256,6 @@ const AuraAssistant: React.FC = () => {
     const handleMouseMove = (e: MouseEvent | TouchEvent) => {
       if (!isDraggingRef.current && !isResizingRef.current) return;
 
-      // Handle resize
       if (isResizingRef.current) {
         const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
         const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
@@ -266,9 +265,7 @@ const AuraAssistant: React.FC = () => {
           w: Math.max(320, resizeStartRef.current.w + dx),
           h: Math.max(220, resizeStartRef.current.h + dy),
         });
-      } 
-      // Handle drag
-      else if (isDraggingRef.current) {
+      } else if (isDraggingRef.current) {
         const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
         const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
