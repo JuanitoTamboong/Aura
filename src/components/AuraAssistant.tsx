@@ -142,6 +142,14 @@ const AuraAssistant: React.FC = () => {
   const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
 
+  // ✅ Drag & Resize State
+  const [embedPos, setEmbedPos] = useState({ x: 0, y: 0 });
+  const [embedSize, setEmbedSize] = useState({ w: 650, h: 400 }); // Slightly taller to fit handle
+  const isDraggingRef = useRef(false);
+  const isResizingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const resizeStartRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>(() => {
     return settings.voice.selectedVoiceName || localStorage.getItem("aura_selected_voice") || "";
   });
@@ -242,6 +250,58 @@ const AuraAssistant: React.FC = () => {
       return [];
     }
   });
+
+  // ✅ Global mouse listeners for dragging/resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingRef.current) {
+        const dx = e.clientX - dragStartRef.current.x;
+        const dy = e.clientY - dragStartRef.current.y;
+        setEmbedPos({ x: dx, y: dy });
+      }
+      if (isResizingRef.current) {
+        const dx = e.clientX - resizeStartRef.current.x;
+        const dy = e.clientY - resizeStartRef.current.y;
+        setEmbedSize({
+          w: Math.max(320, resizeStartRef.current.w + dx),
+          h: Math.max(220, resizeStartRef.current.h + dy),
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      isResizingRef.current = false;
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  const startDrag = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button")) return; 
+    isDraggingRef.current = true;
+    dragStartRef.current = { 
+      x: e.clientX - embedPos.x, 
+      y: e.clientY - embedPos.y 
+    };
+  };
+
+  const startResize = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    isResizingRef.current = true;
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      w: embedSize.w,
+      h: embedSize.h,
+    };
+  };
 
   const requestAudioPermissions = async () => {
     try {
@@ -2325,25 +2385,76 @@ const AuraAssistant: React.FC = () => {
           </div>
 
           {embeddedVideo && (
-            <div className="aura-embed">
-              <div className="aura-embed-header">
+            <div
+              className="aura-embed"
+              style={{
+                position: "fixed",
+                top: "50%",
+                left: "50%",
+                transform: `translate(calc(-50% + ${embedPos.x}px), calc(-50% + ${embedPos.y}px))`,
+                width: embedSize.w,
+                height: embedSize.h,
+                zIndex: 99999,
+                display: "flex",
+                flexDirection: "column",
+                resize: "none", 
+              }}
+            >
+              <div
+                className="aura-embed-header"
+                style={{ cursor: "move" }}
+                onMouseDown={startDrag}
+              >
                 <span className="aura-live-dot" />
                 <span>EMBEDDED PLAYER</span>
                 <button
                   type="button"
                   className="aura-embed-close"
-                  onClick={() => setEmbeddedVideo(null)}
+                  onClick={() => {
+                    setEmbeddedVideo(null);
+                    setEmbedPos({ x: 0, y: 0 }); // Reset position on close
+                  }}
                 >
                   CLOSE
                 </button>
               </div>
-              <div className="aura-embed-frame">
+              <div className="aura-embed-frame" style={{ flex: 1, position: "relative" }}>
                 <iframe
                   src={embeddedVideo}
                   title="Aura Embedded Player"
                   allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                   allowFullScreen
+                  style={{ width: "100%", height: "100%", border: "none" }}
                 />
+                
+                {/* ✅ FIXED: Resize handle is now a visible tab at the bottom-center */}
+                <div
+                  onMouseDown={startResize}
+                  style={{
+                    position: "absolute",
+                    bottom: "8px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    padding: "6px 24px",
+                    cursor: "nwse-resize",
+                    background: "var(--aura-violet)",
+                    border: "2px solid #fff",
+                    borderRadius: "20px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
+                    zIndex: 2147483647, // Max z-index
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "white",
+                    fontSize: "11px",
+                    fontFamily: "var(--aura-display)",
+                    letterSpacing: "0.1em",
+                    fontWeight: "bold",
+                    userSelect: "none",
+                  }}
+                >
+                  DRAG TO RESIZE
+                </div>
               </div>
             </div>
           )}
