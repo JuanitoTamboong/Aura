@@ -23,7 +23,6 @@ import {
   FaComments,
   FaImages,
 } from "react-icons/fa6";
-import packageJson from "../../package.json";
 import { FaRegMoon, FaRegSun } from "react-icons/fa";
 
 import ReactMarkdown from "react-markdown";
@@ -49,7 +48,6 @@ import SplashScreen from "./SplashScreen";
 import WelcomeScreen from "./WelcomeScreen";
 import AuraWorkspace, { type ChatMessage } from "./AuraWorkspace";
 import AuraMediaVault from "./AuraMediaVault";
-
 interface CommandDetails {
   title: string;
   category: string;
@@ -1968,7 +1966,7 @@ const AuraAssistant: React.FC = () => {
           <span className={`aura-live-dot ${!isOnline ? "offline" : ""}`} />
           <span>{isOnline ? "CORE ONLINE" : "CORE OFFLINE"}</span>
           <span className="aura-header-divider" />
-       <span className="aura-system-version">SYS.V {__APP_VERSION__}</span>
+          <span className="aura-system-version">SYS.V 3.2.0</span>
         </div>
 
         <div className="aura-header-actions">
