@@ -12,6 +12,8 @@ import {
 import { setReminder } from "./AuraReminders";
 import { getWeather } from "./AuraWeather";
 import { supabase } from "../../supabase/supabase-client";
+// ── IMPORT SETTINGS ──
+import { loadSettings } from "../settings/AuraSettingsStore";
 
 interface CommandDetails {
   title: string; category: string; match: string;
@@ -41,6 +43,12 @@ export const processCommand = async ({
   signal, onPartialReply,
   activeImageUrl,
 }: CommandProps): Promise<any> => {
+
+  // ── Load User Settings ──
+  const settings = loadSettings();
+  const isDebug = settings.advanced.debugMode;
+
+  if (isDebug) console.log(`[AuraCommand] Processing: "${cmd}"`);
 
   const originalCommand = (cmd || "").trim();
   if (!originalCommand) { setStatusText("SYSTEM ONLINE"); return ""; }
@@ -87,7 +95,8 @@ export const processCommand = async ({
     ]);
     let partial = "";
     const reply = await askAIStream(messages, {
-      maxTokens: 320, signal,
+      maxTokens: settings.advanced.maxTokens || 320, 
+      signal,
       onToken: (d) => { partial += d; onPartialReply?.(partial); },
     });
     addUserTurn("continue");
@@ -470,7 +479,6 @@ export const processCommand = async ({
         if (["txt", "csv", "md", "pdf", "docx", "xlsx"].includes(fileExt)) {
            setStatusText(`READING ${fileExt.toUpperCase()} FILE...`);
            
-           // FIX: Use .ilike() to ignore capitalization and partial matches
            const baseSearchName = rawFileName.replace(/\.[^/.]+$/, ""); 
            
            const { data: docData, error: docError } = await supabase
@@ -487,7 +495,6 @@ export const processCommand = async ({
              hasDocumentContext = true;
            } else {
              console.error("DB Error or Empty Text:", docError);
-             // Fallback if the text wasn't found in the DB
              text = `The user is asking about the document "${rawFileName}", but I couldn't find its text in the database. Please ask the user to copy-paste the text. User's request: "${text}"`;
              hasDocumentContext = true;
            }
@@ -514,7 +521,6 @@ export const processCommand = async ({
         }
       } catch (err) {
         console.error("File reading error:", err);
-        // Fall through to standard text AI if file reading fails
       }
     }
 
@@ -529,14 +535,12 @@ export const processCommand = async ({
         ? "\nFACT: Juanito Tamboong's girlfriend is Rizalyn Uy."
         : "");
 
-    // FIX: If a document is loaded, NEVER treat the question as a short follow-up.
     const isFollowUp =
       !hasDocumentContext && (
         /\b(it|that|this|those|them|why|how come|what about|and then|what happened)\b/i.test(normalized) ||
         normalized.split(/\s+/).length <= 4
       );
 
-    // FIX: If we have a document, we ALWAYS need long-form generation so the AI has room to answer
     const wantsLongForm =
       hasDocumentContext ||
       /\b(code|function|component|class|script|story|essay|list|steps|quiz|explain in detail|walk me through|answer|read|summarize)\b/i.test(normalized);
@@ -548,12 +552,24 @@ export const processCommand = async ({
 
     addUserTurn(originalCommand);
 
+    // ── USE ADVANCED SETTINGS FOR AI ──
+    // Determine the max tokens to send based on user setting OR fallback to smart logic
+    const finalMaxTokens = settings.advanced.maxTokens && settings.advanced.maxTokens !== 1200
+      ? settings.advanced.maxTokens
+      : (hasDocumentContext ? 2500 : (wantsLongForm ? 1200 : 220));
+
+    if (isDebug) {
+      console.log("[AuraCommand] AI Request Payload:", messages);
+      console.log(`[AuraCommand] Max Tokens: ${finalMaxTokens}`);
+    }
+
     let partial = "";
     const reply = await askAIStream(messages, {
       signal,
-      // FIX: If hasDocumentContext is true, allow up to 2500 tokens so the AI doesn't get cut off
-      maxTokens: hasDocumentContext ? 2500 : (wantsLongForm ? 1200 : 220),
+      maxTokens: finalMaxTokens,
       temperature: wantsLongForm ? 0.7 : 0.6,
+      // If you add modelOverride to your API, you would pass it here:
+      // model: settings.advanced.modelOverride || undefined, 
       onToken: (d) => {
         partial += d;
         onPartialReply?.(partial);

@@ -22,6 +22,7 @@ import {
   FaChevronDown,
   FaComments,
   FaImages,
+  FaGear,
 } from "react-icons/fa6";
 import { FaRegMoon, FaRegSun } from "react-icons/fa";
 
@@ -42,12 +43,17 @@ import {
   type Reminder,
 } from "../command/AuraReminders";
 
+// ── SETTINGS IMPORTS ──
+import AuraSettings from "./AuraSettings";
+import { loadSettings, type AuraSettings as AuraSettingsType } from "../settings/AuraSettingsStore";
+
 import alarmSound from "../assets/sound/alarm-clock.mp3";
 
 import SplashScreen from "./SplashScreen";
 import WelcomeScreen from "./WelcomeScreen";
 import AuraWorkspace, { type ChatMessage } from "./AuraWorkspace";
 import AuraMediaVault from "./AuraMediaVault";
+
 interface CommandDetails {
   title: string;
   category: string;
@@ -94,41 +100,33 @@ const AuraAssistant: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
   const [statusText, setStatusText] = useState("SYSTEM ONLINE");
   
-  // ✅ Defaults to "Sir"
   const [transcriptText, setTranscriptText] = useState(
     "Awaiting your command, Sir."
   );
   
-  const [commandDetails, setCommandDetails] =
-    useState<CommandDetails>(INITIAL_DETAILS);
+  const [commandDetails, setCommandDetails] = useState<CommandDetails>(INITIAL_DETAILS);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
-  const [showLogs, setShowLogs] = useState(false);
+  // ── SETTINGS STATE ──
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<AuraSettingsType>(() => loadSettings());
 
-  // ✅ DEFAULT = LIGHT (white). Only dark if user previously chose dark.
   const [lightMode, setLightMode] = useState(() => {
-    const saved = localStorage.getItem("aura_light_mode");
-    return saved === null ? true : saved === "true";
+    return settings.appearance.lightMode;
   });
 
-  // ✅ Guard against first-paint dark→light flash
   const [themeReady, setThemeReady] = useState(false);
-
   const [pipOpen, setPipOpen] = useState(false);
-
   const [userProfile, setUserProfile] = useState(getUserProfile());
-
   const [showResponseModal, setShowResponseModal] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-
   const [embeddedVideo, setEmbeddedVideo] = useState<string | null>(null);
-
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>(() => {
-    return localStorage.getItem("aura_selected_voice") || "";
+    return settings.voice.selectedVoiceName || localStorage.getItem("aura_selected_voice") || "";
   });
 
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false);
@@ -144,7 +142,6 @@ const AuraAssistant: React.FC = () => {
   const [pendingAlarms, setPendingAlarms] = useState<Reminder[]>([]);
   const [isAlarmRinging, setIsAlarmRinging] = useState(false);
 
-  // ── Workspace / chat state ──────────────────────────────
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
     try {
@@ -157,11 +154,7 @@ const AuraAssistant: React.FC = () => {
     }
   });
   const activeAssistantMsgIdRef = useRef<string | null>(null);
-  
-  // ── Media Vault State ────────────────────────────────────
   const [vaultOpen, setVaultOpen] = useState(false);
-
-  // ── Mute Guard Ref ───────────────────────────────────────
   const isWorkspaceOpenRef = useRef(false);
 
   const alarmAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -183,7 +176,6 @@ const AuraAssistant: React.FC = () => {
   const mountedRef = useRef(true);
   const lastCommandTextRef = useRef("");
 
-  // ── Race-condition guards ────────────────────────────────────────
   const ignoreMicRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const micRestartTimeoutRef = useRef<any>(null);
@@ -195,18 +187,19 @@ const AuraAssistant: React.FC = () => {
   const handsFreeRef = useRef(false);
   const wakeCooldownRef = useRef(false);
 
-  // ── single-flight AI request tracking ───────────────────────
   const inFlightControllerRef = useRef<AbortController | null>(null);
   const replyTokenRef = useRef(0);
   const lastPartialReplyRef = useRef("");
 
-  // ── Keep track of the last image shown ──────────────
   const lastActiveImageRef = useRef<string | null>(null);
 
-  // ── mirrors ──────────────────────────────────────────────
   const selectedVoiceNameRef = useRef(selectedVoiceName);
   const commandDetailsRef = useRef(commandDetails);
   const toggleMicRef = useRef<() => void>(() => {});
+  
+  // ✅ Keep a live ref of settings so background tasks (animation, speak) get the latest data
+  const settingsRef = useRef(settings);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
 
   const wasOnlineRef = useRef<boolean>(
     typeof navigator !== "undefined" ? navigator.onLine : true
@@ -249,30 +242,35 @@ const AuraAssistant: React.FC = () => {
     }
   };
 
+  // ✅ PRIVACY: Only save history if setting is true
   useEffect(() => {
-    try {
-      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-    } catch (error) {
-      console.warn("Failed to persist Aura history:", error);
+    if (settings.privacy.persistHistory) {
+      try {
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+      } catch (error) {
+        console.warn("Failed to persist Aura history:", error);
+      }
     }
-  }, [history]);
+  }, [history, settings.privacy.persistHistory]);
 
+  // ✅ PRIVACY: Only save workspace if setting is true
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        WORKSPACE_STORAGE_KEY,
-        JSON.stringify(chatMessages.slice(-100))
-      );
-    } catch (error) {
-      console.warn("Failed to persist Aura workspace messages:", error);
+    if (settings.privacy.persistWorkspace) {
+      try {
+        localStorage.setItem(
+          WORKSPACE_STORAGE_KEY,
+          JSON.stringify(chatMessages.slice(-100))
+        );
+      } catch (error) {
+        console.warn("Failed to persist Aura workspace messages:", error);
+      }
     }
-  }, [chatMessages]);
+  }, [chatMessages, settings.privacy.persistWorkspace]);
 
   useEffect(() => {
     commandDetailsRef.current = commandDetails;
   }, [commandDetails]);
 
-  // FIX: Reset speaking state when workspace opens to prevent mic deadlock
   useEffect(() => {
     isWorkspaceOpenRef.current = workspaceOpen;
     if (workspaceOpen) {
@@ -292,13 +290,11 @@ const AuraAssistant: React.FC = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ Enable smooth theme transitions only after first paint
   useEffect(() => {
     const id = requestAnimationFrame(() => setThemeReady(true));
     return () => cancelAnimationFrame(id);
   }, []);
 
-  // ✅ Sync <html>/<body> background with the current theme
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
@@ -306,6 +302,20 @@ const AuraAssistant: React.FC = () => {
     root.classList[method]("aura-dark-root");
     body.classList[method]("aura-dark-root");
   }, [lightMode]);
+
+  // ✅ ACCENT COLOR ENGINE: Injects CSS variables globally
+  useEffect(() => {
+    const ACCENT_COLORS: Record<string, string> = {
+      violet: "#8b5cf6", cyan: "#22d3ee", pink: "#ec4899", amber: "#f59e0b", emerald: "#10b981",
+    };
+    let color = ACCENT_COLORS[settings.appearance.accent];
+    if (settings.appearance.accent === "custom") {
+      color = settings.appearance.customAccent;
+    }
+    if (color) {
+      document.documentElement.style.setProperty("--aura-violet", color);
+    }
+  }, [settings.appearance.accent, settings.appearance.customAccent]);
 
   useEffect(() => {
     if (bootStage !== "ready") return;
@@ -327,11 +337,7 @@ const AuraAssistant: React.FC = () => {
     setPendingAlarms((prev) => prev.filter((r) => r.id !== id));
     setStatusText("ALARM CANCELLED");
     setTimeout(
-      () =>
-        setStatusText((s) =>
-          s === "ALARM CANCELLED" ? "SYSTEM ONLINE" : s
-        ),
-      1500
+      () => setStatusText((s) => s === "ALARM CANCELLED" ? "SYSTEM ONLINE" : s), 1500
     );
   };
 
@@ -443,7 +449,6 @@ const AuraAssistant: React.FC = () => {
     };
   }, []);
 
-  // ✅ Sets the greeting to the saved name, defaulting to "Sir"
   useEffect(() => {
     const profile = getUserProfile();
     const name = profile.name || "Sir";
@@ -580,6 +585,13 @@ const AuraAssistant: React.FC = () => {
           return;
         }
 
+        // ✅ APPLY SETTINGS: Skip drawing particles if effects are disabled
+        if (settingsRef.current.appearance.reduceMotion || !settingsRef.current.appearance.showParticles) {
+          frame = targetWindow.requestAnimationFrame(draw);
+          animRef.current = frame;
+          return;
+        }
+
         ctx.clearRect(0, 0, width, height);
 
         const cx = width / 2;
@@ -588,6 +600,8 @@ const AuraAssistant: React.FC = () => {
         const active = micModeRef.current === "active" || isSpeakingRef.current;
 
         phase += active ? 0.045 : 0.012;
+
+        const activeAccent = getComputedStyle(document.documentElement).getPropertyValue('--aura-violet').trim() || "#8b5cf6";
 
         particles.forEach((particle, i) => {
           const amplitude = active ? 20 : 7;
@@ -616,8 +630,9 @@ const AuraAssistant: React.FC = () => {
             ctx.fillStyle = `rgba(80, 210, 255, ${pulse})`;
             ctx.shadowColor = "#22d3ee";
           } else {
-            ctx.fillStyle = `rgba(167, 110, 255, ${pulse})`;
-            ctx.shadowColor = "#8b5cf6";
+            // ✅ ACCENT COLOR APPLIED HERE
+            ctx.fillStyle = activeAccent; 
+            ctx.shadowColor = activeAccent;
           }
 
           ctx.shadowBlur = active ? 12 : 5;
@@ -678,6 +693,13 @@ const AuraAssistant: React.FC = () => {
   const auraSpeak = useCallback((text: string, overrideVoiceName?: string) => {
     if (isWorkspaceOpenRef.current) return;
 
+    // ✅ MUTE GUARD
+    if (settingsRef.current.voice.muteAura) {
+      isSpeakingRef.current = false;
+      ignoreMicRef.current = false;
+      return;
+    }
+
     if (!text?.trim() || !("speechSynthesis" in window)) return;
 
     const currentGeneration = ++speechGenerationRef.current;
@@ -715,8 +737,10 @@ const AuraAssistant: React.FC = () => {
       setStatusText("SPEAKING");
 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.pitch = 0.85;
-      utterance.rate = 0.95;
+      // ✅ PULL LIVE SETTINGS FROM REF
+      utterance.pitch = settingsRef.current.voice.pitch ?? 0.85;
+      utterance.rate = settingsRef.current.voice.rate ?? 0.95;
+      utterance.volume = settingsRef.current.voice.volume ?? 1;
 
       if (voice) utterance.voice = voice;
 
@@ -778,6 +802,7 @@ const AuraAssistant: React.FC = () => {
         try {
           const audio = new Audio(alarmSound);
           audio.loop = true;
+          audio.volume = settingsRef.current.alarms.volume ?? 1; // ✅ APPLY ALARM VOLUME
           alarmAudioRef.current = audio;
           audio.play().catch(() => {});
         } catch {}
@@ -921,9 +946,7 @@ const AuraAssistant: React.FC = () => {
 
   const runCommand = useCallback(
     async (command: string) => {
-      // 1. Only strip wake words if the command came from the MICROPHONE (Voice)
       const isVoiceCommand = !isWorkspaceOpenRef.current;
-      
       let cleaned = command.trim();
       
       if (isVoiceCommand) {
@@ -932,7 +955,6 @@ const AuraAssistant: React.FC = () => {
 
       if (!cleaned || cleaned.length < 1) return;
 
-      // 2. Handle conversational prompts (hi, hello, aura, etc.)
       const lowerClean = cleaned.toLowerCase().replace(/[.,!?]/g, "").trim();
       if (["aura", "hey aura", "okay aura", "hi aura", "hello", "hi", "hey"].includes(lowerClean)) {
         const userId = generateId("u");
@@ -1516,7 +1538,6 @@ const AuraAssistant: React.FC = () => {
       `;
       pipWindow.document.head.appendChild(style);
 
-      // ✅ PiP: add aura-dark-pip only when the user is in dark mode
       if (!lightMode) pipWindow.document.body.classList.add("aura-dark-pip");
 
       const container = pipWindow.document.createElement("div");
@@ -1726,14 +1747,11 @@ const AuraAssistant: React.FC = () => {
       ? "active"
       : "";
 
-  // ✅ Root class: default (no class) = LIGHT; add "aura-dark" for dark.
-  //    "no-transition" only applies during the first paint so theme swaps
-  //    never cause a dark→light flash on load.
   const rootClass = `aura-app ${lightMode ? "" : "aura-dark"} ${themeReady ? "" : "no-transition"}`.trim();
 
   return (
     <div className={rootClass}>
-      <div className="aura-scanlines" aria-hidden="true" />
+      <div className="aura-scanlines" aria-hidden="true" style={{ display: settings.appearance.showScanlines ? "block" : "none" }} />
       <div className="aura-ambient aura-ambient-one" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-two" aria-hidden="true" />
 
@@ -2007,12 +2025,13 @@ const AuraAssistant: React.FC = () => {
 
           <button
             type="button"
-            className="aura-icon-button"
-            title="System Logs"
-            onClick={() => setShowLogs((value) => !value)}
+            className={`aura-icon-button ${settingsOpen ? "is-active" : ""}`}
+            title="System Settings"
+            onClick={() => setSettingsOpen(true)}
           >
-            <FaTerminal />
+            <FaGear />
           </button>
+          
           <button
             type="button"
             className={`aura-icon-button ${handsFree ? "is-active" : ""}`}
@@ -2022,7 +2041,6 @@ const AuraAssistant: React.FC = () => {
             <FaPowerOff />
           </button>
 
-          {/* ✅ Theme toggle: Sun in LIGHT mode, Moon in DARK mode */}
           <button
             type="button"
             className="aura-icon-button"
@@ -2043,347 +2061,6 @@ const AuraAssistant: React.FC = () => {
           </button>
         </div>
       </header>
-
-      {showLogs && (
-        <div className="aura-notification">
-          <strong
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              color: "var(--aura-violet)",
-              fontSize: "11px",
-            }}
-          >
-            <FaTerminal /> SYSTEM SETTINGS & LOGS
-          </strong>
-
-          <div
-            style={{
-              marginTop: "15px",
-              marginBottom: "15px",
-              padding: "10px",
-              background: "rgba(34, 211, 238, 0.1)",
-              borderRadius: "5px",
-              border: "1px solid rgba(34, 211, 238, 0.4)",
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: "10px",
-                color: "var(--aura-muted)",
-                fontFamily: "monospace",
-              }}
-            >
-              <span>VOICE ENGINE:</span>
-              <span style={{ color: "var(--aura-cyan)", fontWeight: "bold" }}>
-                BROWSER (DEFAULT)
-              </span>
-            </label>
-          </div>
-
-          <div style={{ marginTop: "15px", marginBottom: "15px", position: "relative" }} ref={dropdownRef}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "10px",
-                color: "var(--aura-muted)",
-                marginBottom: "5px",
-                fontFamily: "monospace",
-              }}
-            >
-              VOICE SELECTION:
-            </label>
-            <button
-              type="button"
-              onClick={() => setIsVoiceDropdownOpen(!isVoiceDropdownOpen)}
-              style={{
-                width: "100%",
-                padding: "8px 10px",
-                background: lightMode ? "#ffffff" : "#0f0d23",
-                color: lightMode ? "#21183c" : "#fff",
-                border: "1px solid var(--aura-border-bright)",
-                borderRadius: "5px",
-                fontSize: "12px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {selectedVoiceName || "Browser Default"}
-              </span>
-              <FaChevronDown
-                style={{
-                  transform: isVoiceDropdownOpen ? "rotate(180deg)" : "none",
-                  transition: "transform 0.2s",
-                }}
-              />
-            </button>
-
-            {isVoiceDropdownOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  right: 0,
-                  marginTop: "5px",
-                  background: lightMode ? "#ffffff" : "#0f0d23",
-                  border: "1px solid var(--aura-border-bright)",
-                  borderRadius: "5px",
-                  zIndex: 50,
-                  maxHeight: "200px",
-                  overflowY: "auto",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-                }}
-              >
-                {availableVoices.map((voice, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => {
-                      setSelectedVoiceName(voice.name);
-                      localStorage.setItem("aura_selected_voice", voice.name);
-                      setIsVoiceDropdownOpen(false);
-                      auraSpeak("Browser voice activated.", voice.name);
-                    }}
-                    style={{
-                      padding: "8px 10px",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      borderBottom: "1px solid var(--aura-border)",
-                      background:
-                        voice.name === selectedVoiceName
-                          ? lightMode
-                            ? "rgba(139,92,246,0.12)"
-                            : "rgba(139,92,246,0.25)"
-                          : "transparent",
-                      color:
-                        voice.name === selectedVoiceName ? "var(--aura-violet)" : "inherit",
-                      fontWeight: voice.name === selectedVoiceName ? 600 : 400,
-                    }}
-                    className="aura-dropdown-item"
-                  >
-                    {voice.name === selectedVoiceName ? "● " : ""}
-                    {voice.name} ({voice.lang})
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div
-            style={{
-              marginBottom: "15px",
-              padding: "10px",
-              background: "rgba(139, 92, 246, 0.1)",
-              borderRadius: "5px",
-              border: "1px solid var(--aura-border)",
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: "10px",
-                color: "var(--aura-muted)",
-                marginBottom: "5px",
-                fontFamily: "monospace",
-              }}
-            >
-              <span>USER MEMORY PROFILE:</span>
-              <span
-                style={{ color: "var(--aura-violet)", cursor: "pointer" }}
-                onClick={() => setUserProfile(getUserProfile())}
-              >
-                ↻ REFRESH
-              </span>
-            </label>
-
-            <p
-              style={{
-                margin: 0,
-                fontSize: "12px",
-                color: "var(--aura-text)",
-                fontFamily: "monospace",
-              }}
-            >
-              <strong>Name:</strong> {userProfile.name}
-            </p>
-
-            {userProfile.facts && userProfile.facts.length > 0 ? (
-              <p
-                style={{
-                  margin: "5px 0 0",
-                  fontSize: "11px",
-                  color: "var(--aura-text)",
-                  fontFamily: "monospace",
-                }}
-              >
-                <strong>Facts:</strong>
-                <br />
-                {userProfile.facts.map((fact, idx) => (
-                  <span key={idx}>• {fact}<br /></span>
-                ))}
-              </p>
-            ) : (
-              <p
-                style={{
-                  margin: "5px 0 0",
-                  fontSize: "10px",
-                  color: "var(--aura-subtle)",
-                  fontFamily: "monospace",
-                  fontStyle: "italic",
-                }}
-              >
-                No additional facts saved yet.
-              </p>
-            )}
-          </div>
-
-          <div
-            style={{
-              marginBottom: "15px",
-              padding: "10px",
-              background: "rgba(139, 92, 246, 0.1)",
-              borderRadius: "5px",
-              border: "1px solid var(--aura-border)",
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: "10px",
-                color: "var(--aura-muted)",
-                marginBottom: "5px",
-                fontFamily: "monospace",
-              }}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <FaBell /> PENDING ALARMS:
-              </span>
-              <span style={{ color: "var(--aura-violet)" }}>
-                {pendingAlarms.length.toString().padStart(2, "0")}
-              </span>
-            </label>
-
-            {pendingAlarms.length === 0 ? (
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: "10px",
-                  color: "var(--aura-subtle)",
-                  fontFamily: "monospace",
-                  fontStyle: "italic",
-                }}
-              >
-                No alarms scheduled.
-              </p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {pendingAlarms.map((alarm) => (
-                  <div
-                    key={alarm.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      fontSize: "11px",
-                      color: "var(--aura-text)",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    <span
-                      style={{
-                        flex: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <strong style={{ color: "var(--aura-violet)" }}>
-                        {new Date(alarm.time).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </strong>
-                      {" — "}
-                      {alarm.message}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCancelAlarm(alarm.id)}
-                      title="Cancel this alarm"
-                      style={{
-                        background: "transparent",
-                        border: "1px solid rgba(248, 113, 113, 0.4)",
-                        color: "#f87171",
-                        borderRadius: 4,
-                        cursor: "pointer",
-                        padding: "2px 6px",
-                        fontSize: 10,
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div
-            style={{
-              fontSize: "11px",
-              color: "var(--aura-muted)",
-              fontFamily: "monospace",
-              display: "flex",
-              flexDirection: "column",
-              gap: "6px",
-              maxHeight: "120px",
-              overflowY: "auto",
-              borderTop: "1px solid var(--aura-border)",
-              paddingTop: "10px",
-            }}
-          >
-            <p>• Core initialisation successful.</p>
-            <p>• Speech recognition ready.</p>
-            {!isOnline && <p style={{ color: "#fca5a5" }}>• Network offline — cloud features disabled.</p>}
-            {handsFree && (
-              <p style={{ color: "var(--aura-violet)" }}>
-                • Hands-free mode active ({micMode}).
-              </p>
-            )}
-            {history.length > 0 && (
-              <p style={{ color: "var(--aura-violet)" }}>
-                • Last command: "{history[0].command}"
-              </p>
-            )}
-            {embeddedVideo && <p style={{ color: "var(--aura-cyan)" }}>• Embedded player active.</p>}
-            {pipOpen && <p style={{ color: "var(--aura-cyan)" }}>• Floating Aura window active.</p>}
-            {workspaceOpen && <p style={{ color: "var(--aura-cyan)" }}>• Workspace (chat) active.</p>}
-            {pendingAlarms.length > 0 && (
-              <p style={{ color: "var(--aura-cyan)" }}>
-                • {pendingAlarms.length} alarm{pendingAlarms.length === 1 ? "" : "s"} scheduled.
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowLogs(false)}
-            style={{ marginTop: "15px", width: "100%" }}
-          >
-            Close Settings
-          </button>
-        </div>
-      )}
 
       <main className="aura-dashboard">
         <aside className="aura-panel aura-sidebar">
@@ -2644,6 +2321,26 @@ const AuraAssistant: React.FC = () => {
         <AuraMediaVault
           onClose={() => setVaultOpen(false)}
           lightMode={lightMode}
+        />
+      )}
+
+      {settingsOpen && (
+        <AuraSettings
+          lightMode={lightMode}
+          onClose={() => setSettingsOpen(false)}
+          onChange={(newSettings) => {
+            setSettings(newSettings);
+            setLightMode(newSettings.appearance.lightMode);
+          }}
+          availableVoices={availableVoices}
+          selectedVoiceName={selectedVoiceName}
+          onVoiceChange={(name) => {
+            setSelectedVoiceName(name);
+            settings.voice.selectedVoiceName = name; 
+          }}
+          onTestVoice={(voiceName) => auraSpeak("This is how I sound, Sir.", voiceName)}
+          pendingAlarms={pendingAlarms}
+          onCancelAlarm={handleCancelAlarm}
         />
       )}
     </div>
