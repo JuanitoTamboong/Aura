@@ -190,7 +190,7 @@ const AuraAssistant: React.FC = () => {
   const replyTokenRef = useRef(0);
   const lastPartialReplyRef = useRef("");
 
-  // ── NEW: Keep track of the last image shown ──────────────
+  // ── Keep track of the last image shown ──────────────
   const lastActiveImageRef = useRef<string | null>(null);
 
   // ── mirrors ──────────────────────────────────────────────
@@ -892,6 +892,12 @@ const AuraAssistant: React.FC = () => {
       const cleaned = command.trim().replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
       if (!cleaned || cleaned.length < 2) return;
 
+      // ── FIX: Clear the active image if the user isn't asking about it ──
+      const isAskingAboutImage = /\b(describe|what is|who is|look at|see|image|picture|photo|this|that)\b/i.test(cleaned);
+      if (!isAskingAboutImage) {
+        lastActiveImageRef.current = null;
+      }
+
       if (inFlightControllerRef.current) {
         try { inFlightControllerRef.current.abort(); } catch {}
         inFlightControllerRef.current = null;
@@ -970,7 +976,6 @@ const AuraAssistant: React.FC = () => {
       }
 
       // FIX: If workspace is open, pass a silent dummy function to processCommand
-      // so the internal AI engine doesn't trigger voice synthesis.
       const silentAuraSpeak = isWorkspaceOpenRef.current 
         ? () => {} 
         : auraSpeak;
@@ -985,7 +990,6 @@ const AuraAssistant: React.FC = () => {
         setEmbeddedVideo,
         stopMic,
         signal: controller.signal,
-        // Pass the last active image to the AI API!
         activeImageUrl: lastActiveImageRef.current, 
         onPartialReply: (partial) => {
           if (myToken !== replyTokenRef.current) return;
@@ -1009,13 +1013,11 @@ const AuraAssistant: React.FC = () => {
           const all = getReminders().filter((r) => r.active);
           setPendingAlarms(all.sort((a, b) => a.time - b.time));
 
-          // Check if result is the Media Object from Supabase
           const isMediaResult = result && typeof result === 'object' && 'mediaItems' in result;
           const finalText = isMediaResult 
             ? result.text 
             : (result && typeof result === 'string' && result.trim() ? result : lastPartialReplyRef.current || "Done.");
 
-          // If this message contains images, save the URL for the next AI prompt
           if (isMediaResult && result.mediaItems.length > 0) {
             lastActiveImageRef.current = result.mediaItems[0].url;
           }
@@ -1029,7 +1031,6 @@ const AuraAssistant: React.FC = () => {
                       ...m,
                       content: finalText,
                       streaming: false,
-                      // Attach the images to the message if they exist
                       mediaItems: isMediaResult ? result.mediaItems : undefined,
                       category: isMediaResult ? "Media Vault" : (commandDetailsRef.current?.category ?? m.category),
                     }
@@ -1039,7 +1040,22 @@ const AuraAssistant: React.FC = () => {
             activeAssistantMsgIdRef.current = null;
           }
 
-          if (!isMediaResult && !isMobile && !workspaceOpen && finalText && finalText.trim().length > 0) {
+          // ── FIX: Update main panel details if it's a media result ──
+          if (isMediaResult) {
+            setCommandDetails({
+              title: `Media: ${cleaned.replace(/.*\b(pic|picture|photo|image|of)\b/gi, "").trim() || "Search"}`,
+              category: "Media Vault",
+              match: "100%",
+              type: "media",
+              data: {
+                text: result.text,
+                mediaItems: result.mediaItems
+              }
+            });
+          }
+
+          // ── FIX: Allow modal to pop up for media results too ──
+          if (!isMobile && !workspaceOpen && finalText && finalText.trim().length > 0) {
             setTimeout(() => {
               if (myToken !== replyTokenRef.current) return;
               setManualOpen(false);
@@ -1535,6 +1551,35 @@ const AuraAssistant: React.FC = () => {
   };
 
   const renderResult = () => {
+    // ── FIX: Render Media Items in the Main Dashboard ──
+    if (commandDetails.type === "media" && commandDetails.data?.mediaItems) {
+      return (
+        <div className="aura-response" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="aura-markdown-container">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {commandDetails.data.text}
+            </ReactMarkdown>
+          </div>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', 
+            gap: '10px',
+            marginTop: '10px'
+          }}>
+            {commandDetails.data.mediaItems.map((media: any, idx: number) => (
+              <div key={idx} style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+                {media.type === "image" ? (
+                  <img src={media.url} alt="Aura Media" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                ) : (
+                  <video src={media.url} controls style={{ width: '100%', display: 'block' }} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     if (commandDetails.type === "video" && Array.isArray(commandDetails.data)) {
       if (commandDetails.data.length === 0)
         return <p className="aura-empty">No video results returned.</p>;
@@ -1804,7 +1849,7 @@ const AuraAssistant: React.FC = () => {
                   fontFamily: "var(--aura-font)",
                 }}
               >
-                {commandDetails.type === "video" && Array.isArray(commandDetails.data) ? (
+                {commandDetails.type === "media" || (commandDetails.type === "video" && Array.isArray(commandDetails.data)) ? (
                   renderResult()
                 ) : (
                   <div
