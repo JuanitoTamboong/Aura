@@ -1,6 +1,6 @@
 // src/command/AuraCommand.tsx
 import {
-  askAIStream, buildMessages, toSpokenText, AuraApiError,
+  askAIStream, buildMessages, toSpokenText, AuraApiError, askAIVision,
   type ChatMessage,
 } from "../api/aura-api";
 import {
@@ -493,6 +493,34 @@ export const processCommand = async ({
       match: "...", type: "text", data: "",
     });
 
+    // 1. If there is an active image, use the Vision API instead of the streaming text API
+    if (activeImageUrl) {
+      try {
+        setStatusText("ANALYZING IMAGE...");
+        // Ask the AI to describe the image
+        const visionReply = await askAIVision(activeImageUrl, text, { signal });
+        
+        addUserTurn(originalCommand);
+        addAssistantTurn(visionReply);
+
+        setStatusText("SPEAKING");
+        await Promise.resolve(auraSpeak(toSpokenText(visionReply)));
+        setStatusText("SYSTEM ONLINE");
+        
+        setCommandDetails({
+          title: "Image Analysis",
+          category: "Vision",
+          match: "100%", type: "text", data: visionReply,
+        });
+        
+        return visionReply;
+      } catch (err) {
+        console.error("Vision API Error:", err);
+        // Fall through to standard text AI if vision fails
+      }
+    }
+
+    // 2. Standard Text AI Fallback
     const profile = getUserProfile();
     const factsList = profile.facts?.length
       ? `Facts you remember about the user:\n- ${profile.facts.join("\n- ")}`
@@ -515,15 +543,6 @@ export const processCommand = async ({
     const history = turnsToMessages(turns).slice(-16);
     const userMsg: ChatMessage = { role: "user", content: text };
     const messages = buildMessages([...history, userMsg], userCtx);
-
-    // ── Inject image as a strict text string to bypass proxy 400 errors ─────────
-    if (activeImageUrl) {
-      messages.push({
-        role: "user",
-        content: `[SYSTEM NOTE: The user is referring to the image they just saw at this URL: ${activeImageUrl}. If you cannot view the URL directly, please ask the user to describe the image to you.]`
-      } as any);
-    }
-    // ────────────────────────────────────────────────────────────
 
     addUserTurn(originalCommand);
 

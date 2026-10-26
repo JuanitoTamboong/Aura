@@ -1,39 +1,65 @@
-// src/api/aura-api.ts
-//
-// Aura AI transport.
-// - Real message-role history (system/user/assistant), never string-stuffed.
-// - True token streaming (Groq SSE), not a fake loading animation.
-// - Typed errors so UI can distinguish auth / rate-limit / network / timeout.
-// - Single-flight per request via AbortSignal; callers own the controller.
-// - Direct-browser SDK is disabled unless VITE_ALLOW_INSECURE_DIRECT=1
-//   (dev-only). Production MUST route through /api/chat.
-//
+/**
+ * src/api/aura-api.ts
+ *
+ * Aura AI transport:
+ * - Text chat with conversation history.
+ * - Real token streaming.
+ * - Image recognition using Groq's multimodal vision model.
+ * - Typed API errors with useful proxy error messages.
+ * - AbortSignal support and request timeouts.
+ * - Optional direct-browser SDK for development only.
+ */
+
 import Groq from "groq-sdk";
 
+// ── Message types ──────────────────────────────────────────────────
+
 export type ChatRole = "system" | "user" | "assistant";
+
+export type ChatContentPart =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "image_url";
+      image_url: {
+        url: string;
+      };
+    };
+
 export interface ChatMessage {
   role: ChatRole;
-  content: string;
+  content: string | ChatContentPart[];
 }
 
 export interface AskAIOptions {
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
-  onToken?: (delta: string) => void; // presence => streaming path
+  onToken?: (delta: string) => void;
 }
 
-// ── Config ─────────────────────────────────────────────────────────
+// ── Model configuration ────────────────────────────────────────────
+
 const PRIMARY_MODEL = "openai/gpt-oss-120b";
 const FALLBACK_MODELS = ["openai/gpt-oss-20b"];
 
-const DIRECT_KEY = (import.meta.env.VITE_GROQ_API_KEY as string | undefined)?.trim();
-const ALLOW_DIRECT =
-  (import.meta.env.VITE_ALLOW_INSECURE_DIRECT as string | undefined) === "1";
+// Vision model for image + text requests.
+const VISION_MODEL = "qwen/qwen3.8-27b";
 
-// PROXY_URL is required for production. In dev, default to the local proxy so
-// the app works out of the box without extra env vars.
-const RAW_PROXY = (import.meta.env.VITE_PROXY_URL as string | undefined)?.trim();
+const DIRECT_KEY = (
+  import.meta.env.VITE_GROQ_API_KEY as string | undefined
+)?.trim();
+
+const ALLOW_DIRECT =
+  (import.meta.env.VITE_ALLOW_INSECURE_DIRECT as string | undefined) ===
+  "1";
+
+const RAW_PROXY = (
+  import.meta.env.VITE_PROXY_URL as string | undefined
+)?.trim();
+
 const PROXY_URL = (
   RAW_PROXY ||
   (import.meta.env.DEV ? "http://localhost:8787" : "")
@@ -41,22 +67,25 @@ const PROXY_URL = (
 
 if (DIRECT_KEY && ALLOW_DIRECT) {
   console.warn(
-    "[Aura] INSECURE DIRECT MODE. The Groq API key is in the client bundle. " +
-      "Never deploy this build publicly."
+    "[Aura] INSECURE DIRECT MODE is enabled. " +
+      "Your Groq key may be exposed in the browser bundle. " +
+      "Do not deploy this configuration publicly."
   );
 }
 
 const groq =
   DIRECT_KEY && ALLOW_DIRECT
-    ? new Groq({ apiKey: DIRECT_KEY, dangerouslyAllowBrowser: true })
+    ? new Groq({
+        apiKey: DIRECT_KEY,
+        dangerouslyAllowBrowser: true,
+      })
     : null;
 
-export const isAuraApiConfigured = (): boolean => {
-  if (groq) return true;
-  return PROXY_URL.length > 0;
-};
+export const isAuraApiConfigured = (): boolean =>
+  Boolean(groq || PROXY_URL);
 
-// ── Typed errors ────────────────────────────────────────────────────
+// ── Typed errors ───────────────────────────────────────────────────
+
 export type AuraApiErrorKind =
   | "no_key"
   | "auth"
@@ -71,6 +100,7 @@ export class AuraApiError extends Error {
   kind: AuraApiErrorKind;
   status?: number;
   retryAfterMs?: number;
+
   constructor(
     kind: AuraApiErrorKind,
     message: string,
@@ -87,37 +117,102 @@ export class AuraApiError extends Error {
 
 const classify = (err: unknown): AuraApiError => {
   if (err instanceof AuraApiError) return err;
+
   const e = err as any;
-  if (e?.name === "AbortError") return new AuraApiError("aborted", "Cancelled.");
-  if (e?.name === "TimeoutError") return new AuraApiError("timeout", "AI service timed out.");
+
+  if (e?.name === "AbortError") {
+    return new AuraApiError("aborted", "The request was cancelled.");
+  }
+
+  if (e?.name === "TimeoutError") {
+    return new AuraApiError(
+      "timeout",
+      "The AI service took too long to respond."
+    );
+  }
+
   const status = e?.status;
+
   const retryAfter = e?.response?.headers?.get?.("retry-after");
-  const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
-  if (status === 401 || status === 403)
-    return new AuraApiError("auth", "API key rejected.", status);
-  if (status === 429)
-    return new AuraApiError("rate_limit", "Rate limited.", status, retryAfterMs);
-  if (status === 404)
-    return new AuraApiError("bad_response", "Model unavailable.", status);
-  if (typeof status === "number" && status >= 500)
-    return new AuraApiError("network", "AI backend error.", status);
-  if (/fetch|network|Failed to fetch/i.test(e?.message || ""))
-    return new AuraApiError("network", "Network error.");
-  return new AuraApiError("unknown", e?.message || "Unknown error", status);
+
+  const retryAfterMs = retryAfter
+    ? Number.parseInt(retryAfter, 10) * 1000
+    : undefined;
+
+  const originalMessage =
+    typeof e?.message === "string" ? e.message : "Unknown AI error.";
+
+  if (status === 401 || status === 403) {
+    return new AuraApiError(
+      "auth",
+      originalMessage || "The API key was rejected.",
+      status
+    );
+  }
+
+  if (status === 429) {
+    return new AuraApiError(
+      "rate_limit",
+      originalMessage || "The AI service rate limit was reached.",
+      status,
+      retryAfterMs
+    );
+  }
+
+  if (status === 400) {
+    return new AuraApiError(
+      "bad_response",
+      originalMessage || "The AI service rejected the request.",
+      status
+    );
+  }
+
+  if (status === 404) {
+    return new AuraApiError(
+      "bad_response",
+      originalMessage || "The requested AI model was not found.",
+      status
+    );
+  }
+
+  if (typeof status === "number" && status >= 500) {
+    return new AuraApiError("network", originalMessage, status);
+  }
+
+  if (/fetch|network|failed to fetch/i.test(originalMessage)) {
+    return new AuraApiError("network", originalMessage);
+  }
+
+  return new AuraApiError("unknown", originalMessage, status);
 };
 
-// ── System prompt (voice-first personality) ────────────────────────
+// ── Aura personality ───────────────────────────────────────────────
+
 export const AURA_SYSTEM_PROMPT = [
   "You are Aura, a warm, quick-witted voice companion created by Juanito Tamboong.",
-  "You speak like a friend on a phone call: short sentences, contractions, natural rhythm.",
-  "Hard rules:",
-  "- If the user greets you, greet them back briefly. Never answer a greeting with a canned question.",
-  "- For casual chat, reply in 1–2 short sentences. No lists. No headings. No bullet points. No markdown.",
-  "- Only produce lists, code, steps, or long explanations when the user explicitly asks for them.",
-  "- If the user says 'why?', 'what about it?', 'that didn't work', resolve against recent turns.",
-  "- Never say: 'Certainly!', 'Great question!', 'As an AI language model', 'Is there anything else'.",
-  "- Do not use asterisks for actions, do not role-play, do not claim to be human or to have feelings.",
+  "Speak naturally, like a friendly voice companion.",
+  "Use short sentences, contractions, and natural conversational rhythm.",
+  "When the user greets you, greet them back briefly.",
+  "For casual conversation, usually reply in one or two short sentences.",
+  "Do not use lists, headings, or Markdown unless requested.",
+  "Use recent conversation history to understand follow-up questions.",
+  "If the user says 'why?', 'what about it?', or 'that did not work', resolve it against the recent conversation.",
+  "Never say 'Certainly!', 'Great question!', or 'As an AI language model'.",
+  "Do not claim to be human or to have feelings.",
 ].join("\n");
+
+const AURA_VISION_PROMPT = [
+  "You are Aura, an image-aware voice assistant.",
+  "Carefully inspect the actual image supplied by the user.",
+  "Describe visible objects, characters, colors, text, and important details accurately.",
+  "Answer the user's question about the image directly.",
+  "Do not claim an object or detail is visible unless the image supports that conclusion.",
+  "If the image is unclear, explain which details are uncertain.",
+  "If asked to identify a fictional character, give the likely character name when recognizable.",
+  "Use a natural, concise response suitable for being spoken aloud.",
+].join("\n");
+
+// ── Conversation messages ──────────────────────────────────────────
 
 export const buildMessages = (
   turns: ChatMessage[],
@@ -133,92 +228,218 @@ export const buildMessages = (
 ];
 
 // ── Timeout helper ─────────────────────────────────────────────────
+
 const withTimeout = <T>(
   factory: (signal: AbortSignal) => Promise<T>,
   ms: number,
   outerSignal?: AbortSignal
 ): Promise<T> => {
   const controller = new AbortController();
+
   const linkAbort = () => controller.abort();
+
   if (outerSignal) {
-    if (outerSignal.aborted) controller.abort();
-    else outerSignal.addEventListener("abort", linkAbort, { once: true });
+    if (outerSignal.aborted) {
+      controller.abort();
+    } else {
+      outerSignal.addEventListener("abort", linkAbort, {
+        once: true,
+      });
+    }
   }
 
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      const e = new Error("TimeoutError");
-      e.name = "TimeoutError";
-      try { controller.abort(); } catch {}
-      reject(e);
+      const error = new Error("The AI request timed out.");
+      error.name = "TimeoutError";
+
+      controller.abort();
+      reject(error);
     }, ms);
   });
 
-  const work = factory(controller.signal);
+  // Prevent a synchronous factory error from bypassing cleanup.
+  const work = Promise.resolve().then(() => factory(controller.signal));
 
   return Promise.race([work, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
-    if (outerSignal) outerSignal.removeEventListener("abort", linkAbort);
+
+    if (outerSignal) {
+      outerSignal.removeEventListener("abort", linkAbort);
+    }
   });
 };
 
-// ── Proxy call ─────────────────────────────────────────────────────
-const proxyCall = async (
-  messages: ChatMessage[],
-  o: AskAIOptions & { stream: boolean; model: string },
-  signal?: AbortSignal
-): Promise<Response> => {
+// ── Proxy URL ──────────────────────────────────────────────────────
+
+const getProxyEndpoint = (): string => {
   if (!PROXY_URL) {
     throw new AuraApiError(
       "no_key",
-      "No AI transport configured. Set VITE_PROXY_URL (or run `npm run dev:server` in dev)."
+      "No AI transport is configured. Start the local proxy or set VITE_PROXY_URL."
     );
   }
 
-  // Smart URL builder to prevent double /api/api/chat errors
-  const base = PROXY_URL.endsWith("/") ? PROXY_URL.slice(0, -1) : PROXY_URL;
-  const endpoint = base.endsWith("/chat") 
-    ? base 
-    : (base.endsWith("/api") ? `${base}/chat` : `${base}/api/chat`);
+  const base = PROXY_URL.replace(/\/+$/, "");
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      messages,
-      model: o.model,
-      max_tokens: o.maxTokens ?? 260,
-      temperature: o.temperature ?? 0.6,
-      stream: o.stream,
-      reasoning_effort: "low",
-    }),
-    signal,
-  });
-  if (!res.ok) {
-    const retryAfter = res.headers.get("retry-after");
-    const err: any = new Error(`proxy ${res.status}`);
-    err.status = res.status;
-    if (retryAfter) {
-      err.response = { headers: new Headers({ "retry-after": retryAfter }) };
-    }
-    throw classify(err);
+  if (base.endsWith("/api/chat") || base.endsWith("/chat")) {
+    return base;
   }
-  return res;
+
+  if (base.endsWith("/api")) {
+    return `${base}/chat`;
+  }
+
+  return `${base}/api/chat`;
 };
 
-// ── Non-streaming ──────────────────────────────────────────────────
+// ── Proxy request ──────────────────────────────────────────────────
+
+const proxyCall = async (
+  messages: ChatMessage[],
+  options: AskAIOptions & {
+    stream: boolean;
+    model: string;
+  },
+  signal?: AbortSignal
+): Promise<Response> => {
+  const endpoint = getProxyEndpoint();
+
+  let response: Response;
+
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+        model: options.model,
+        max_tokens: options.maxTokens ?? 260,
+        temperature: options.temperature ?? 0.6,
+        stream: options.stream,
+        reasoning_effort: "low",
+      }),
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted) {
+      throw new AuraApiError("aborted", "The request was cancelled.");
+    }
+
+    throw classify(error);
+  }
+
+  if (!response.ok) {
+    const retryAfter = response.headers.get("retry-after");
+
+    // Preserve the actual proxy/Groq error instead of hiding it
+    // behind a generic "proxy 400" message.
+    const responseText = await response.text().catch(() => "");
+
+    let detail = responseText;
+
+    try {
+      const parsed = JSON.parse(responseText);
+      detail =
+        parsed?.error?.message ||
+        parsed?.message ||
+        parsed?.error ||
+        responseText;
+    } catch {
+      // The server may return plain text rather than JSON.
+    }
+
+    if (typeof detail !== "string") {
+      detail = JSON.stringify(detail);
+    }
+
+    const message =
+      detail.trim().slice(0, 1200) ||
+      `AI proxy returned HTTP ${response.status}.`;
+
+    const error = new AuraApiError(
+      response.status === 401 || response.status === 403
+        ? "auth"
+        : response.status === 429
+          ? "rate_limit"
+          : response.status === 400 || response.status === 404
+            ? "bad_response"
+            : response.status >= 500
+              ? "network"
+              : "unknown",
+      message,
+      response.status,
+      retryAfter ? Number.parseInt(retryAfter, 10) * 1000 : undefined
+    );
+
+    throw error;
+  }
+
+  return response;
+};
+
+// ── Extract response text ──────────────────────────────────────────
+
+const extractMessageText = (content: unknown): string => {
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part: any) => {
+        if (typeof part?.text === "string") return part.text;
+        return "";
+      })
+      .join("")
+      .trim();
+  }
+
+  return "";
+};
+
+const readCompletion = async (response: Response): Promise<string> => {
+  let data: any;
+
+  try {
+    data = await response.json();
+  } catch {
+    throw new AuraApiError(
+      "bad_response",
+      "The AI service returned an invalid response."
+    );
+  }
+
+  const answer = extractMessageText(
+    data?.choices?.[0]?.message?.content
+  );
+
+  if (!answer) {
+    throw new AuraApiError(
+      "bad_response",
+      "The AI service returned an empty response."
+    );
+  }
+
+  return answer;
+};
+
+// ── Standard text chat ─────────────────────────────────────────────
+
 export async function askAI(
   input: string | ChatMessage[],
-  opts: AskAIOptions = {}
+  options: AskAIOptions = {}
 ): Promise<string> {
   const messages: ChatMessage[] =
     typeof input === "string"
       ? buildMessages([{ role: "user", content: input }])
       : input;
 
-  let lastErr: AuraApiError | null = null;
+  let lastError: AuraApiError | null = null;
 
   for (const model of [PRIMARY_MODEL, ...FALLBACK_MODELS]) {
     try {
@@ -229,162 +450,422 @@ export async function askAI(
               {
                 messages: messages as any,
                 model,
-                temperature: opts.temperature ?? 0.6,
-                max_tokens: opts.maxTokens ?? 260,
+                temperature: options.temperature ?? 0.6,
+                max_tokens: options.maxTokens ?? 260,
                 stream: false,
               },
               { signal }
             ) as unknown as Promise<any>,
           25_000,
-          opts.signal
+          options.signal
         );
-        const text = completion?.choices?.[0]?.message?.content;
-        if (typeof text === "string" && text.trim()) return text.trim();
-        lastErr = new AuraApiError("bad_response", "Empty response.");
+
+        const answer = extractMessageText(
+          completion?.choices?.[0]?.message?.content
+        );
+
+        if (answer) return answer;
+
+        lastError = new AuraApiError(
+          "bad_response",
+          "The AI service returned an empty response."
+        );
       } else {
-        const res = await withTimeout(
+        const response = await withTimeout(
           (signal) =>
-            proxyCall(messages, { ...opts, stream: false, model }, signal),
+            proxyCall(
+              messages,
+              {
+                ...options,
+                stream: false,
+                model,
+              },
+              signal
+            ),
           25_000,
-          opts.signal
+          options.signal
         );
-        const data = await res.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (typeof text === "string" && text.trim()) return text.trim();
-        lastErr = new AuraApiError("bad_response", "Empty response.");
+
+        return await readCompletion(response);
       }
-    } catch (err) {
-      const e = classify(err);
+    } catch (error) {
+      const classified = classify(error);
+
       if (
-        e.kind === "auth" ||
-        e.kind === "rate_limit" ||
-        e.kind === "aborted" ||
-        e.kind === "timeout"
+        classified.kind === "auth" ||
+        classified.kind === "rate_limit" ||
+        classified.kind === "aborted" ||
+        classified.kind === "timeout"
       ) {
-        throw e;
+        throw classified;
       }
-      lastErr = e;
+
+      lastError = classified;
     }
   }
 
-  throw lastErr ?? new AuraApiError("unknown", "AI service failed.");
+  throw lastError ?? new AuraApiError("unknown", "The AI request failed.");
 }
 
-// ── Streaming ──────────────────────────────────────────────────────
-const isReadableStream = (x: any): x is ReadableStream<Uint8Array> =>
-  !!x && typeof x.getReader === "function";
+// ── Convert browser image URLs into API-compatible image data ──────
+
+const imageUrlToDataUrl = async (
+  imageUrl: string,
+  signal?: AbortSignal
+): Promise<string> => {
+  if (!imageUrl || typeof imageUrl !== "string") {
+    throw new AuraApiError(
+      "bad_response",
+      "No image was provided to Aura."
+    );
+  }
+
+  // Already encoded: use it directly.
+  if (imageUrl.startsWith("data:image/")) {
+    return imageUrl;
+  }
+
+  // Browser blob URLs are local to the browser and cannot be read
+  // by Groq's servers. Convert them into a data URL first.
+  if (imageUrl.startsWith("blob:")) {
+    try {
+      const response = await fetch(imageUrl, { signal });
+
+      if (!response.ok) {
+        throw new Error(`Could not read the selected image (${response.status}).`);
+      }
+
+      const blob = await response.blob();
+
+      if (!blob.type.startsWith("image/")) {
+        throw new Error("The selected file is not a supported image.");
+      }
+
+      // Keep the encoded image reasonably small.
+      if (blob.size > 15 * 1024 * 1024) {
+        throw new Error(
+          "The image is too large. Please choose an image smaller than 15 MB."
+        );
+      }
+
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          if (typeof reader.result === "string") {
+            resolve(reader.result);
+          } else {
+            reject(new Error("Could not encode the selected image."));
+          }
+        };
+
+        reader.onerror = () => {
+          reject(new Error("Failed to read the selected image."));
+        };
+
+        reader.onabort = () => {
+          reject(new DOMException("Image reading was cancelled.", "AbortError"));
+        };
+
+        if (signal?.aborted) {
+          reader.abort();
+          return;
+        }
+
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new AuraApiError("aborted", "The request was cancelled.");
+      }
+
+      throw new AuraApiError(
+        "bad_response",
+        error instanceof Error
+          ? error.message
+          : "Aura could not read the selected image."
+      );
+    }
+  }
+
+  // Public HTTP(S) image URLs can be passed directly to the vision API.
+  if (/^https?:\/\//i.test(imageUrl)) {
+    return imageUrl;
+  }
+
+  throw new AuraApiError(
+    "bad_response",
+    "Unsupported image URL. Use an image file, data URL, or accessible HTTP(S) image."
+  );
+};
+
+// ── Vision / image recognition ─────────────────────────────────────
+
+export async function askAIVision(
+  imageUrl: string,
+  prompt = "Describe this image.",
+  options: AskAIOptions = {}
+): Promise<string> {
+  const signal = options.signal;
+
+  const imageData = await withTimeout(
+    (innerSignal) => imageUrlToDataUrl(imageUrl, innerSignal),
+    15_000,
+    signal
+  );
+
+  const messages: ChatMessage[] = [
+    {
+      role: "system",
+      content: `${AURA_SYSTEM_PROMPT}\n\n${AURA_VISION_PROMPT}`,
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: prompt.trim() || "Describe this image.",
+        },
+        {
+          type: "image_url",
+          image_url: {
+            url: imageData,
+          },
+        },
+      ],
+    },
+  ];
+
+  try {
+    if (groq) {
+      const completion: any = await withTimeout(
+        (innerSignal) =>
+          groq.chat.completions.create(
+            {
+              model: VISION_MODEL,
+              messages: messages as any,
+              max_tokens: options.maxTokens ?? 350,
+              temperature: options.temperature ?? 0.4,
+              stream: false,
+            },
+            { signal: innerSignal }
+          ) as unknown as Promise<any>,
+        45_000,
+        signal
+      );
+
+      const answer = extractMessageText(
+        completion?.choices?.[0]?.message?.content
+      );
+
+      if (answer) return answer;
+
+      throw new AuraApiError(
+        "bad_response",
+        "The vision model returned an empty response."
+      );
+    }
+
+    const response = await withTimeout(
+      (innerSignal) =>
+        proxyCall(
+          messages,
+          {
+            ...options,
+            model: VISION_MODEL,
+            stream: false,
+            maxTokens: options.maxTokens ?? 350,
+            temperature: options.temperature ?? 0.4,
+          },
+          innerSignal
+        ),
+      45_000,
+      signal
+    );
+
+    return await readCompletion(response);
+  } catch (error) {
+    throw classify(error);
+  }
+}
+
+// ── Streaming response parser ──────────────────────────────────────
+
+const isReadableStream = (
+  value: any
+): value is ReadableStream<Uint8Array> =>
+  Boolean(value && typeof value.getReader === "function");
 
 async function consumeStream(
   stream: AsyncIterable<any> | ReadableStream<Uint8Array> | null,
-  onToken: (d: string) => void,
+  onToken: (delta: string) => void,
   signal?: AbortSignal
 ): Promise<string> {
-  let full = "";
-  if (!stream) return full;
+  let fullText = "";
+
+  if (!stream) return fullText;
 
   if (isReadableStream(stream)) {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
-    let buf = "";
 
-    const flushLine = (rawLine: string) => {
+    let buffer = "";
+
+    const processLine = (rawLine: string): boolean => {
       let line = rawLine.trim();
+
       if (!line || line.startsWith(":")) return false;
-      if (line.startsWith("data:")) line = line.slice(5).trim();
+
+      if (line.startsWith("data:")) {
+        line = line.slice(5).trim();
+      }
+
       if (line === "[DONE]") return true;
+
       try {
-        const obj = JSON.parse(line);
-        const delta = obj?.choices?.[0]?.delta?.content;
+        const data = JSON.parse(line);
+        const delta = data?.choices?.[0]?.delta?.content;
+
         if (typeof delta === "string" && delta && !signal?.aborted) {
-          full += delta;
+          fullText += delta;
           onToken(delta);
         }
       } catch {
-        /* ignore malformed line */
+        // Ignore incomplete or malformed SSE lines.
       }
+
       return false;
     };
 
     try {
       while (true) {
-        if (signal?.aborted) throw new AuraApiError("aborted", "Cancelled.");
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
+        if (signal?.aborted) {
+          throw new AuraApiError("aborted", "The request was cancelled.");
+        }
 
-        let idx: number;
-        while ((idx = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, idx);
-          buf = buf.slice(idx + 1);
-          const wasDone = flushLine(line);
-          if (wasDone) return full;
+        const { value, done } = await reader.read();
+
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        let index: number;
+
+        while ((index = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, index);
+          buffer = buffer.slice(index + 1);
+
+          if (processLine(line)) return fullText;
         }
       }
-      if (buf.trim()) flushLine(buf);
+
+      if (buffer.trim()) processLine(buffer);
     } finally {
-      try { reader.releaseLock(); } catch {}
+      try {
+        reader.releaseLock();
+      } catch {
+        // The stream may already be released.
+      }
     }
 
-    return full;
+    return fullText;
   }
 
   for await (const chunk of stream as AsyncIterable<any>) {
-    if (signal?.aborted) throw new AuraApiError("aborted", "Cancelled.");
+    if (signal?.aborted) {
+      throw new AuraApiError("aborted", "The request was cancelled.");
+    }
+
     const delta = chunk?.choices?.[0]?.delta?.content;
+
     if (typeof delta === "string" && delta) {
-      full += delta;
+      fullText += delta;
       onToken(delta);
     }
   }
-  return full;
+
+  return fullText;
 }
+
+// ── Streaming text chat ────────────────────────────────────────────
 
 export async function askAIStream(
   messages: ChatMessage[],
-  opts: AskAIOptions
+  options: AskAIOptions
 ): Promise<string> {
-  if (!opts.onToken) return askAI(messages, opts);
-  const onToken = opts.onToken;
+  if (!options.onToken) {
+    return askAI(messages, options);
+  }
+
+  const onToken = options.onToken;
   const model = PRIMARY_MODEL;
 
   if (groq) {
-    const stream: any = await groq.chat.completions.create(
-      {
-        messages: messages as any,
-        model,
-        temperature: opts.temperature ?? 0.6,
-        max_tokens: opts.maxTokens ?? 260,
-        stream: true,
-      },
-      { signal: opts.signal }
-    );
-    return consumeStream(stream, onToken, opts.signal);
+    try {
+      const stream: any = await groq.chat.completions.create(
+        {
+          messages: messages as any,
+          model,
+          temperature: options.temperature ?? 0.6,
+          max_tokens: options.maxTokens ?? 260,
+          stream: true,
+        },
+        { signal: options.signal }
+      );
+
+      return await consumeStream(stream, onToken, options.signal);
+    } catch (error) {
+      throw classify(error);
+    }
   }
 
-  const res = await proxyCall(messages, { ...opts, stream: true, model }, opts.signal);
-  return consumeStream(res.body, onToken, opts.signal);
+  const response = await proxyCall(
+    messages,
+    {
+      ...options,
+      stream: true,
+      model,
+    },
+    options.signal
+  );
+
+  if (!response.body) {
+    throw new AuraApiError(
+      "bad_response",
+      "The AI service did not return a readable stream."
+    );
+  }
+
+  return consumeStream(response.body, onToken, options.signal);
 }
 
 // ── Speech cleanup ─────────────────────────────────────────────────
-const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu;
 
-export const toSpokenText = (text: string, maxSentences = 3): string => {
-  let s = text
+const EMOJI_RE =
+  /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu;
+
+export const toSpokenText = (
+  text: string,
+  maxSentences = 3
+): string => {
+  let result = text
     .replace(/```[\s\S]*?```/g, " (code block) ")
     .replace(/`([^`]+)`/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")           
+    .replace(/^#{1,6}\s+/gm, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/^\s*[-*+]\s+/gm, "")         
-    .replace(/^\s*\d+\.\s+/gm, "")         
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
     .replace(EMOJI_RE, "")
     .replace(/\s+/g, " ")
     .trim();
 
-  const sentences = s.match(/[^.!?]+[.!?]+/g);
+  const sentences = result.match(/[^.!?]+[.!?]+/g);
+
   if (sentences && sentences.length > maxSentences) {
-    s = sentences.slice(0, maxSentences).join(" ").trim();
+    result = sentences.slice(0, maxSentences).join(" ").trim();
   }
-  return s;
+
+  return result;
 };
