@@ -517,7 +517,6 @@
   .aura-settings-overlay {
     padding: 0;
     align-items: flex-start;
-    /* ✅ Fixes the mobile browser address bar cutting off the bottom */
     height: 100dvh; 
   }
   .aura-settings-shell {
@@ -528,7 +527,6 @@
   }
   .aura-settings-body {
     flex-direction: column;
-    /* ✅ Ensures the body flexes properly inside the shell */
     overflow: hidden; 
   }
   .aura-settings-nav {
@@ -541,7 +539,6 @@
     padding: 8px;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
-    /* ✅ Keeps the nav tabs from shrinking */
     flex-shrink: 0; 
   }
   .aura-settings-nav button {
@@ -549,15 +546,16 @@
     flex-shrink: 0;
   }
   .aura-settings-nav button span {
-    display: none; /* Hide labels on mobile, keep icons */
+    display: none; 
   }
   .aura-settings-nav button.is-active span {
-    display: inline; /* Show label only for active tab */
+    display: inline; 
   }
   .aura-settings-content {
     padding: 16px;
-    /* ✅ Allows content to scroll independently */
     overflow-y: auto;
+    /* ✅ Forces the content area to scroll properly without pushing footer off-screen */
+    min-height: 0; 
   }
   .aura-settings-row {
     flex-direction: column;
@@ -570,9 +568,13 @@
     width: 100%;
     min-width: 100%;
   }
+  
+  /* ✅ FIX: Adjust footer specifically for mobile safe-areas */
   .aura-settings-footer {
-    /* ✅ Prevents the footer from being pushed off screen */
     flex-shrink: 0;
-    padding-bottom: env(safe-area-inset-bottom, 12px);
+    padding: 16px 22px;
+    /* Adds space so the phone's gesture bar doesn't cover the buttons */
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    background: inherit;
   }
 }
