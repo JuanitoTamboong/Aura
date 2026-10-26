@@ -1,3 +1,4 @@
+// src/components/AuraMediaVault.tsx
 import React, { useState, useEffect, useRef } from "react";
 import { 
   FaCloudArrowUp, 
@@ -12,7 +13,7 @@ import {
   FaFileLines
 } from "react-icons/fa6";
 import { supabase } from "../../supabase/supabase-client";
-import { extractTextFromFile } from "../api/file-extractor"; // Ensure this is created
+import { extractTextFromFile } from "../api/file-extractor"; 
 import "../css/AuraMediaVault.css";
 
 const MEDIA_BUCKET = "aura-media";
@@ -36,11 +37,9 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
   const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // State for the full-screen viewer
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
 
-  // ── States for Custom Modals ──
+  // Modals
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [renameInput, setRenameInput] = useState("");
@@ -84,7 +83,6 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
     fetchFiles();
   }, []);
 
-  // Handle Search Filtering
   useEffect(() => {
     if (!searchQuery.trim()) {
       setFilteredFiles(files);
@@ -108,12 +106,10 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
       const isDoc = /\.(pdf|txt|docx|xlsx|csv|md)$/i.test(file.name);
       let extractedText = "";
 
-      // Extract text if it's a document
       if (isDoc) {
         extractedText = await extractTextFromFile(file);
       }
 
-      // 1. Upload raw file to Storage
       const { error: uploadError } = await supabase.storage.from(MEDIA_BUCKET).upload(fileName, file, {
         upsert: true,
         cacheControl: '3600',
@@ -122,7 +118,6 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
       
       if (uploadError) throw uploadError;
 
-      // 2. Save extracted text to Database
       if (isDoc && extractedText) {
         const { data: { publicUrl } } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(fileName);
         
@@ -149,12 +144,8 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
     if (!deleteTarget) return;
     try {
       setIsLoading(true);
-      
-      // 1. Delete file from Storage
       const { error: storageError } = await supabase.storage.from(MEDIA_BUCKET).remove([deleteTarget]);
       if (storageError) throw storageError;
-
-      // 2. Delete document text from Database
       await supabase.from("documents").delete().eq("file_name", deleteTarget);
       
       setFiles((prev) => prev.filter((f) => f.name !== deleteTarget));
@@ -182,12 +173,9 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
 
     try {
       setIsLoading(true);
-      
-      // 1. Rename file in Storage
       const { error } = await supabase.storage.from(MEDIA_BUCKET).move(renameTarget, finalName);
       if (error) throw error;
 
-      // 2. Update filename in Database
       await supabase.from("documents").update({ file_name: finalName }).eq("file_name", renameTarget);
       
       await fetchFiles(); 
@@ -204,17 +192,12 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
     return new Date(dateStr).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  // ── Organize files by type ──
   const images = filteredFiles.filter(f => f.type === "image");
   const videos = filteredFiles.filter(f => f.type === "video");
   const documents = filteredFiles.filter(f => f.type === "document");
 
-  // Helper component to render a single file card
   const FileCard = ({ file }: { file: MediaFile }) => (
-    <div 
-      className="aura-vault-item"
-      onClick={() => setSelectedFile(file)}
-    >
+    <div className="aura-vault-item" onClick={() => setSelectedFile(file)}>
       <div className="aura-vault-thumb">
         {file.type === "image" ? (
           <img src={file.url} alt={file.name} loading="lazy" />
@@ -270,10 +253,10 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
     </div>
   );
 
+  // ✅ Dynamically apply the theme class
   return (
-    <div className={`aura-vault ${lightMode ? "aura-vault-light" : ""}`}>
+    <div className={`aura-vault ${lightMode ? "aura-vault-light" : "aura-vault-dark"}`}>
       
-      {/* ── Header ───────────────────────────────────────────── */}
       <div className="aura-vault-header">
         <div className="aura-vault-title">
           <FaImage />
@@ -295,7 +278,6 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
         </div>
       </div>
 
-      {/* ── Upload Area ──────────────────────────────────────── */}
       <div className="aura-vault-upload">
         <input
           type="file"
@@ -315,7 +297,6 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
         </button>
       </div>
 
-      {/* ── Media Grids (Organized by Category) ───────────────── */}
       <div className="aura-vault-grid-container">
         {isLoading ? (
           <div className="aura-vault-empty">Loading your archive...</div>
@@ -325,36 +306,27 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
           </div>
         ) : (
           <>
-            {/* IMAGES SECTION */}
             {images.length > 0 && (
               <div className="aura-vault-section">
-                <h3 className="aura-vault-section-title">
-                  <FaImage /> Images ({images.length})
-                </h3>
+                <h3 className="aura-vault-section-title"><FaImage /> Images ({images.length})</h3>
                 <div className="aura-vault-grid">
                   {images.map((file) => <FileCard key={file.name} file={file} />)}
                 </div>
               </div>
             )}
 
-            {/* VIDEOS SECTION */}
             {videos.length > 0 && (
               <div className="aura-vault-section">
-                <h3 className="aura-vault-section-title">
-                  <FaVideo /> Videos ({videos.length})
-                </h3>
+                <h3 className="aura-vault-section-title"><FaVideo /> Videos ({videos.length})</h3>
                 <div className="aura-vault-grid">
                   {videos.map((file) => <FileCard key={file.name} file={file} />)}
                 </div>
               </div>
             )}
 
-            {/* DOCUMENTS SECTION */}
             {documents.length > 0 && (
               <div className="aura-vault-section">
-                <h3 className="aura-vault-section-title">
-                  <FaFileLines /> Documents ({documents.length})
-                </h3>
+                <h3 className="aura-vault-section-title"><FaFileLines /> Documents ({documents.length})</h3>
                 <div className="aura-vault-grid">
                   {documents.map((file) => <FileCard key={file.name} file={file} />)}
                 </div>
@@ -364,13 +336,10 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
         )}
       </div>
 
-      {/* ── Full-Screen Media Viewer (Lightbox) ──────────────── */}
       {selectedFile && (
         <div 
           className="aura-vault-lightbox"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedFile(null);
-          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedFile(null); }}
         >
           <div className="aura-vault-lightbox-header">
             <h3>{selectedFile.name}</h3>
@@ -411,7 +380,6 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
         </div>
       )}
 
-      {/* ── CUSTOM DELETE MODAL ──────────────────────────────── */}
       {deleteTarget && (
         <div className="aura-vault-modal-overlay" onClick={() => setDeleteTarget(null)}>
           <div className="aura-vault-modal" onClick={(e) => e.stopPropagation()}>
@@ -426,7 +394,6 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
         </div>
       )}
 
-      {/* ── CUSTOM RENAME MODAL ──────────────────────────────── */}
       {renameTarget && (
         <div className="aura-vault-modal-overlay" onClick={() => setRenameTarget(null)}>
           <div className="aura-vault-modal" onClick={(e) => e.stopPropagation()}>
