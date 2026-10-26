@@ -24,7 +24,7 @@ import {
   FaImages,
 } from "react-icons/fa6";
 
-import { FaRegMoon } from "react-icons/fa";
+import { FaRegMoon, FaRegSun } from "react-icons/fa";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -105,9 +105,14 @@ const AuraAssistant: React.FC = () => {
 
   const [showLogs, setShowLogs] = useState(false);
 
+  // ✅ DEFAULT = LIGHT (white). Only dark if user previously chose dark.
   const [lightMode, setLightMode] = useState(() => {
-    return localStorage.getItem("aura_light_mode") === "true";
+    const saved = localStorage.getItem("aura_light_mode");
+    return saved === null ? true : saved === "true";
   });
+
+  // ✅ Guard against first-paint dark→light flash
+  const [themeReady, setThemeReady] = useState(false);
 
   const [pipOpen, setPipOpen] = useState(false);
 
@@ -286,6 +291,21 @@ const AuraAssistant: React.FC = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ✅ Enable smooth theme transitions only after first paint
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setThemeReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // ✅ Sync <html>/<body> background with the current theme
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const method = lightMode ? "remove" : "add";
+    root.classList[method]("aura-dark-root");
+    body.classList[method]("aura-dark-root");
+  }, [lightMode]);
+
   useEffect(() => {
     if (bootStage !== "ready") return;
 
@@ -424,7 +444,7 @@ const AuraAssistant: React.FC = () => {
 
   useEffect(() => {
     const profile = getUserProfile();
-    const name = profile.name && profile.name !== "Sir" ? profile.name : "operator";
+    const name = profile.name || "Sir";
     setTranscriptText(`Awaiting your command, ${name}.`);
   }, []);
 
@@ -505,7 +525,6 @@ const AuraAssistant: React.FC = () => {
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
       if (micRestartTimeoutRef.current) clearTimeout(micRestartTimeoutRef.current);
 
-      // FIX: Ensure PiP window closes if the main window unmounts
       if (pipWindowRef.current) {
         try { pipWindowRef.current.close(); } catch {}
         pipWindowRef.current = null;
@@ -1466,36 +1485,37 @@ const AuraAssistant: React.FC = () => {
         * { box-sizing: border-box; }
         body {
           margin: 0; min-height: 100vh;
-          background: radial-gradient(ellipse at 50% 40%, rgba(91,33,182,.18), transparent 55%), #080714;
-          color: #f5f3ff; font-family: Rajdhani, sans-serif;
+          background: radial-gradient(ellipse at 50% 40%, rgba(196, 181, 253, 0.4), transparent 55%), #f2efff;
+          color: #1e1b36; font-family: Rajdhani, sans-serif;
           display: flex; align-items: center; justify-content: center;
           padding: 18px; transition: background 250ms ease, color 250ms ease;
         }
-        body.aura-light-pip { background: radial-gradient(ellipse at 50% 40%, rgba(196, 181, 253, 0.4), transparent 55%), #f2efff; color: #1e1b36; }
-        body.aura-light-pip #auraPipStatus { color: #6b628a; }
-        body.aura-light-pip .aura-pip-orb { border-color: rgba(139, 92, 246, 0.4); background: radial-gradient(circle at 50% 45%, rgba(75, 38, 150, .34), rgba(20, 15, 51, .65) 40%, rgba(7, 6, 19, .95) 75%); box-shadow: 0 0 0 8px rgba(139, 92, 246, 0.1), 0 0 55px rgba(139, 92, 246, 0.25), inset 0 0 45px rgba(139, 92, 246, 0.2); }
-        body.aura-light-pip .aura-pip-orb::before { border-color: rgba(139, 92, 246, 0.3); }
-        body.aura-light-pip .aura-pip-orb .aura-orb-ring-one { border-left-color: #3b82f6; border-right-color: #8b5cf6; }
-        body.aura-light-pip .aura-pip-orb .aura-orb-ring-two { border-top-color: #3b82f6; border-bottom-color: #e879f9; }
-        body.aura-light-pip .aura-pip-orb .aura-orb-grid { background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, 0.15) 0deg 0.5deg, transparent 0.5deg 18deg); border-color: rgba(139, 92, 246, 0.2); }
+        body.aura-dark-pip { background: radial-gradient(ellipse at 50% 40%, rgba(91,33,182,.18), transparent 55%), #080714; color: #f5f3ff; }
+        body.aura-dark-pip #auraPipStatus { color: #b4a8d8; }
+        body.aura-dark-pip .aura-pip-orb { border-color: rgba(167, 139, 250, 0.42); background: radial-gradient(circle at 50% 45%, rgba(75, 38, 150, .34), rgba(20, 15, 51, .65) 40%, rgba(7, 6, 19, .95) 75%); box-shadow: 0 0 0 8px rgba(139, 92, 246, .025), 0 0 0 18px rgba(139, 92, 246, .02), 0 0 55px rgba(124, 58, 237, .2), inset 0 0 45px rgba(59, 130, 246, .09); }
+        body.aura-dark-pip .aura-pip-orb::before { border-color: rgba(167, 139, 250, .23); }
+        body.aura-dark-pip .aura-pip-orb .aura-orb-ring-one { border-left-color: rgba(103, 232, 249, .65); border-right-color: rgba(167, 139, 250, .65); }
+        body.aura-dark-pip .aura-pip-orb .aura-orb-ring-two { border-top-color: rgba(103, 232, 249, .6); border-bottom-color: rgba(232, 121, 249, .55); }
+        body.aura-dark-pip .aura-pip-orb .aura-orb-grid { background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, .07) 0deg .5deg, transparent .5deg 18deg); border-color: rgba(59, 130, 246, .18); }
         .aura-pip { width: 100%; text-align: center; }
-        .aura-pip-orb { position: relative; isolation: isolate; display: grid; place-items: center; width: min(260px, 72vw); aspect-ratio: 1; margin: 0 auto 30px auto; overflow: hidden; border: 1px solid rgba(139, 92, 246, .6); border-radius: 50%; background: radial-gradient(circle at 50% 45%, rgba(75, 38, 150, .34), rgba(20, 15, 51, .65) 40%, rgba(7, 6, 19, .95) 75%); box-shadow: 0 0 0 8px rgba(139, 92, 246, .025), 0 0 0 18px rgba(139, 92, 246, .02), 0 0 55px rgba(124, 58, 237, .2), inset 0 0 45px rgba(59, 130, 246, .09); transition: all 250ms ease; }
-        .aura-pip-orb::before { content: ""; position: absolute; inset: 9%; border: 1px dashed rgba(167, 139, 250, .23); border-radius: 50%; animation: auraRotate 45s linear infinite; transition: border-color 250ms ease; }
-        .aura-pip-orb .aura-orb-grid { position: absolute; inset: 15%; border: 1px solid rgba(59, 130, 246, .18); border-radius: 50%; background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, .07) 0deg .5deg, transparent .5deg 18deg); mask-image: radial-gradient(circle, transparent 20%, black 100%); -webkit-mask-image: radial-gradient(circle, transparent 20%, black 100%); transition: all 250ms ease; }
+        .aura-pip-orb { position: relative; isolation: isolate; display: grid; place-items: center; width: min(260px, 72vw); aspect-ratio: 1; margin: 0 auto 30px auto; overflow: hidden; border: 1px solid rgba(139, 92, 246, .5); border-radius: 50%; background: radial-gradient(circle at 50% 45%, #e9e4fa, #f6f3ff 60%, #ffffff 85%); box-shadow: 0 0 0 8px rgba(139, 92, 246, .05), 0 0 55px rgba(139, 92, 246, .2), inset 0 0 35px rgba(139, 92, 246, .12); transition: all 250ms ease; }
+        .aura-pip-orb::before { content: ""; position: absolute; inset: 9%; border: 1px dashed rgba(139, 92, 246, .3); border-radius: 50%; animation: auraRotate 45s linear infinite; transition: border-color 250ms ease; }
+        .aura-pip-orb .aura-orb-grid { position: absolute; inset: 15%; border: 1px solid rgba(139, 92, 246, .15); border-radius: 50%; background: repeating-conic-gradient(from 0deg, rgba(139, 92, 246, .1) 0deg .5deg, transparent .5deg 18deg); mask-image: radial-gradient(circle, transparent 20%, black 100%); -webkit-mask-image: radial-gradient(circle, transparent 20%, black 100%); transition: all 250ms ease; }
         .aura-pip-orb .aura-orb-ring { position: absolute; border: 1px solid rgba(139, 92, 246, .25); border-radius: 50%; transition: border-color 250ms ease; }
-        .aura-pip-orb .aura-orb-ring-one { inset: 22%; border-left-color: rgba(103, 232, 249, .65); border-right-color: rgba(167, 139, 250, .65); transform: rotate(-35deg); animation: auraRotate 12s linear infinite; }
-        .aura-pip-orb .aura-orb-ring-two { inset: 29%; border-top-color: rgba(103, 232, 249, .6); border-bottom-color: rgba(232, 121, 249, .55); transform: rotate(40deg); animation: auraRotateReverse 16s linear infinite; }
-        .aura-pip-orb .aura-core-logo { position: absolute; z-index: 2; width: 26%; height: 26%; object-fit: contain; opacity: .92; filter: drop-shadow(0 0 12px rgba(167, 139, 250, .65)) drop-shadow(0 0 25px rgba(59, 130, 246, .32)); pointer-events: none; }
+        .aura-pip-orb .aura-orb-ring-one { inset: 22%; border-left-color: #3b82f6; border-right-color: #8b5cf6; transform: rotate(-35deg); animation: auraRotate 12s linear infinite; }
+        .aura-pip-orb .aura-orb-ring-two { inset: 29%; border-top-color: #3b82f6; border-bottom-color: #e879f9; transform: rotate(40deg); animation: auraRotateReverse 16s linear infinite; }
+        .aura-pip-orb .aura-core-logo { position: absolute; z-index: 2; width: 26%; height: 26%; object-fit: contain; opacity: .92; filter: drop-shadow(0 0 12px rgba(139, 92, 246, .55)) drop-shadow(0 0 25px rgba(59, 130, 246, .32)); pointer-events: none; }
         .aura-pip-orb canvas { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
         @keyframes auraRotate { to { transform: rotate(325deg); } }
         @keyframes auraRotateReverse { to { transform: rotate(-320deg); } }
-        #auraPipStatus { margin: 0 0 16px; color: #b4a8d8; font-family: Orbitron, sans-serif; font-size: 10px; letter-spacing: .14em; transition: color 250ms ease; }
-        .aura-pip button { border: 1px solid rgba(196,181,253,.42); background: linear-gradient(110deg, #5b21b6, #4338ca 55%, #1d4ed8); color: white; border-radius: 11px; padding: 13px 26px; cursor: pointer; font-family: Orbitron, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .13em; box-shadow: 0 8px 28px rgba(91,33,182,.24), inset 0 1px rgba(255,255,255,.12); transition: filter 180ms ease, transform 180ms ease; }
-        .aura-pip button:hover { filter: brightness(1.12); transform: translateY(-1px); }
+        #auraPipStatus { margin: 0 0 16px; color: #6b628a; font-family: Orbitron, sans-serif; font-size: 10px; letter-spacing: .14em; transition: color 250ms ease; }
+        .aura-pip button { border: 1px solid rgba(139, 92, 246, .5); background: linear-gradient(110deg, #7c3aed, #6366f1 55%, #3b82f6); color: white; border-radius: 11px; padding: 13px 26px; cursor: pointer; font-family: Orbitron, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .13em; box-shadow: 0 8px 28px rgba(139, 92, 246, .24), inset 0 1px rgba(255,255,255,.2); transition: filter 180ms ease, transform 180ms ease; }
+        .aura-pip button:hover { filter: brightness(1.08); transform: translateY(-1px); }
       `;
       pipWindow.document.head.appendChild(style);
 
-      if (lightMode) pipWindow.document.body.classList.add("aura-light-pip");
+      // ✅ PiP: add aura-dark-pip only when the user is in dark mode
+      if (!lightMode) pipWindow.document.body.classList.add("aura-dark-pip");
 
       const container = pipWindow.document.createElement("div");
       container.className = "aura-pip";
@@ -1704,8 +1724,13 @@ const AuraAssistant: React.FC = () => {
       ? "active"
       : "";
 
+  // ✅ Root class: default (no class) = LIGHT; add "aura-dark" for dark.
+  //    "no-transition" only applies during the first paint so theme swaps
+  //    never cause a dark→light flash on load.
+  const rootClass = `aura-app ${lightMode ? "" : "aura-dark"} ${themeReady ? "" : "no-transition"}`.trim();
+
   return (
-    <div className={`aura-app ${lightMode ? "aura-light" : ""}`}>
+    <div className={rootClass}>
       <div className="aura-scanlines" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-one" aria-hidden="true" />
       <div className="aura-ambient aura-ambient-two" aria-hidden="true" />
@@ -1755,6 +1780,7 @@ const AuraAssistant: React.FC = () => {
               boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px rgba(139, 92, 246, 0.15)",
               overflow: "hidden",
               animation: "auraModalPop 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
+              transition: "background 450ms ease, border-color 450ms ease",
             }}
           >
             <div
@@ -1938,7 +1964,7 @@ const AuraAssistant: React.FC = () => {
           <span className={`aura-live-dot ${!isOnline ? "offline" : ""}`} />
           <span>{isOnline ? "CORE ONLINE" : "CORE OFFLINE"}</span>
           <span className="aura-header-divider" />
-          <span className="aura-system-version">SYS.V 2.0</span>
+          <span className="aura-system-version">SYS.V 3.2</span>
         </div>
 
         <div className="aura-header-actions">
@@ -1993,14 +2019,17 @@ const AuraAssistant: React.FC = () => {
           >
             <FaPowerOff />
           </button>
+
+          {/* ✅ Theme toggle: Sun in LIGHT mode, Moon in DARK mode */}
           <button
             type="button"
             className="aura-icon-button"
-            title="Toggle appearance"
+            title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
             onClick={() => setLightMode((value) => !value)}
           >
-            <FaRegMoon />
+            {lightMode ? <FaRegMoon /> : <FaRegSun />}
           </button>
+
           <button
             type="button"
             className={`aura-icon-button ${pipOpen ? "is-active" : ""}`}
