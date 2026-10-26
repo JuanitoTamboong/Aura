@@ -23,7 +23,7 @@ import {
   FaComments,
   FaImages,
 } from "react-icons/fa6";
-
+import packageJson from "../../package.json";
 import { FaRegMoon, FaRegSun } from "react-icons/fa";
 
 import ReactMarkdown from "react-markdown";
@@ -95,9 +95,12 @@ const AuraAssistant: React.FC = () => {
 
   const [isListening, setIsListening] = useState(false);
   const [statusText, setStatusText] = useState("SYSTEM ONLINE");
+  
+  // ✅ Defaults to "Sir"
   const [transcriptText, setTranscriptText] = useState(
-    "Awaiting your command, operator."
+    "Awaiting your command, Sir."
   );
+  
   const [commandDetails, setCommandDetails] =
     useState<CommandDetails>(INITIAL_DETAILS);
   const [searchQuery, setSearchQuery] = useState("");
@@ -442,6 +445,7 @@ const AuraAssistant: React.FC = () => {
     };
   }, []);
 
+  // ✅ Sets the greeting to the saved name, defaulting to "Sir"
   useEffect(() => {
     const profile = getUserProfile();
     const name = profile.name || "Sir";
@@ -1964,7 +1968,7 @@ const AuraAssistant: React.FC = () => {
           <span className={`aura-live-dot ${!isOnline ? "offline" : ""}`} />
           <span>{isOnline ? "CORE ONLINE" : "CORE OFFLINE"}</span>
           <span className="aura-header-divider" />
-          <span className="aura-system-version">SYS.V 3.2</span>
+       <span className="aura-system-version">SYS.V {__APP_VERSION__}</span>
         </div>
 
         <div className="aura-header-actions">
