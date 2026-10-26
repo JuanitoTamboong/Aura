@@ -316,7 +316,7 @@ const AuraAssistant: React.FC = () => {
     body.classList[method]("aura-dark-root");
   }, [lightMode]);
 
-  // ✅ FIXED: Force the accent color on the root element
+  // ✅ Force the accent color on the root element
   useEffect(() => {
     const ACCENT_COLORS: Record<string, string> = {
       violet: "#8b5cf6", cyan: "#22d3ee", pink: "#ec4899", amber: "#f59e0b", emerald: "#10b981",
@@ -327,10 +327,8 @@ const AuraAssistant: React.FC = () => {
       color = settings.appearance.customAccent;
     }
     
-    // Force fallback to Violet if something is missing
     if (!color) color = "#8b5cf6";
 
-    // This overwrites the CSS variable globally
     document.documentElement.style.setProperty("--aura-violet", color);
     
   }, [settings.appearance.accent, settings.appearance.customAccent]);
@@ -1406,6 +1404,27 @@ const AuraAssistant: React.FC = () => {
   }, [setupSpeechRecognition, enterStandbyMode, auraSpeak]);
 
   const toggleMic = useCallback(() => {
+    // ✅ FIX: If we are currently listening, STOP everything immediately
+    if (isListeningRef.current) {
+      stopRequestedRef.current = true;
+      isListeningRef.current = false;
+      setIsListening(false);
+      micModeRef.current = "off";
+      setMicMode("off");
+      
+      try { 
+        recognitionRef.current?.abort(); 
+        recognitionRef.current?.stop(); 
+      } catch {}
+      
+      if (micRestartTimeoutRef.current) clearTimeout(micRestartTimeoutRef.current);
+      window.speechSynthesis.cancel();
+      setStatusText("SYSTEM ONLINE");
+      setShowResponseModal(false);
+      if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
+      return;
+    }
+
     if (handsFreeRef.current && micModeRef.current === "standby") {
       enterActiveMode();
       return;
@@ -1417,22 +1436,13 @@ const AuraAssistant: React.FC = () => {
       return;
     }
 
-    if (isListeningRef.current) {
-      stopRequestedRef.current = true;
-      isListeningRef.current = false;
-      setIsListening(false);
-      try { recognitionRef.current?.abort(); } catch {}
-      window.speechSynthesis.cancel();
-      setStatusText("SYSTEM ONLINE");
-      setShowResponseModal(false);
-      if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
-      return;
-    }
-
+    // ✅ START LISTENING
     stopRequestedRef.current = false;
     setStatusText("INITIALIZING...");
     window.speechSynthesis.cancel();
     lastCommandTextRef.current = "";
+    micModeRef.current = "active";
+    setMicMode("active");
 
     requestAudioPermissions();
 
@@ -1446,6 +1456,9 @@ const AuraAssistant: React.FC = () => {
       setTranscriptText("Listening for your command...");
     } catch {
       setStatusText("MICROPHONE UNAVAILABLE");
+      setIsListening(false);
+      micModeRef.current = "off";
+      setMicMode("off");
     }
   }, [setupSpeechRecognition, enterActiveMode, exitHandsFree]);
 
@@ -1675,7 +1688,7 @@ const AuraAssistant: React.FC = () => {
             marginTop: '10px'
           }}>
             {commandDetails.data.mediaItems.map((media: any, idx: number) => (
-              <div key={idx} style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+              <div key={idx} style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--aura-border)' }}>
                 {media.type === "image" ? (
                   <img src={media.url} alt="Aura Media" style={{ width: '100%', height: 'auto', display: 'block' }} />
                 ) : (
@@ -1814,14 +1827,14 @@ const AuraAssistant: React.FC = () => {
           <div
             style={{
               background: lightMode ? "rgba(255, 255, 255, 0.95)" : "rgba(15, 12, 32, 0.95)",
-              border: "1px solid var(--aura-border-bright)", // ✅ Fixed: uses border color, not solid accent
+              border: "1px solid var(--aura-border-bright)", 
               borderRadius: "24px",
               width: "100%",
               maxWidth: isMobile ? "100%" : "900px",
               maxHeight: "90vh",
               display: "flex",
               flexDirection: isMobile ? "column" : "row",
-              boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px var(--aura-border)", // ✅ Fixed
+              boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px var(--aura-border)", 
               overflow: "hidden",
               animation: "auraModalPop 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
               transition: "background 450ms ease, border-color 450ms ease",
@@ -1835,7 +1848,6 @@ const AuraAssistant: React.FC = () => {
                 flexDirection: isMobile ? "row" : "column",
                 alignItems: "center",
                 justifyContent: "center",
-                // ✅ Fixed: Removed opacity: 0.1 and made background a subtle gradient
                 background: lightMode 
                   ? "linear-gradient(135deg, rgba(139,92,246,0.05) 0%, rgba(255,255,255,0) 100%)" 
                   : "linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(0,0,0,0) 100%)",
@@ -1907,7 +1919,7 @@ const AuraAssistant: React.FC = () => {
                   justifyContent: "space-between",
                   alignItems: "flex-start",
                   padding: "20px",
-                  borderBottom: "1px solid var(--aura-border)", // ✅ Fixed
+                  borderBottom: "1px solid var(--aura-border)", 
                 }}
               >
                 <div>
@@ -1934,10 +1946,10 @@ const AuraAssistant: React.FC = () => {
                     setManualOpen(false);
                   }}
                   style={{
-                    background: "var(--aura-border)", // ✅ Fixed
+                    background: "var(--aura-border)", 
                     opacity: 0.8,
                     border: "1px solid var(--aura-border-bright)",
-                    color: lightMode ? "#21183c" : "#fff", // ✅ Fixed
+                    color: lightMode ? "#21183c" : "#fff", 
                     width: "36px",
                     height: "36px",
                     borderRadius: "50%",
@@ -2357,8 +2369,6 @@ const AuraAssistant: React.FC = () => {
           lightMode={lightMode}
           onClose={() => setSettingsOpen(false)}
           onChange={(newSettings) => {
-            // ✅ Preview-only: do NOT save to localStorage here.
-            // Saving to localStorage only happens when the user clicks "Done" inside AuraSettings.
             setSettings(newSettings);
           }}
           availableVoices={availableVoices}
