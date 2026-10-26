@@ -83,8 +83,12 @@ const WAKE_WORDS = /\b(aur+a|aura|hey aura|okay aura|wake up|wake up aura|aura w
 const HISTORY_STORAGE_KEY = "aura_history";
 const WORKSPACE_STORAGE_KEY = "aura_workspace_messages";
 
-const generateId = (prefix: string) =>
-  `${prefix}-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(36).substring(2)}`;
+const generateId = (prefix: string) => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 9)}`;
+};
 
 const AuraAssistant: React.FC = () => {
   const [bootStage, setBootStage] = useState<BootStage>("splash");
@@ -262,11 +266,13 @@ const AuraAssistant: React.FC = () => {
     commandDetailsRef.current = commandDetails;
   }, [commandDetails]);
 
-  // Update the mute guard when workspace opens/closes & kill active speech
+  // FIX: Reset speaking state when workspace opens to prevent mic deadlock
   useEffect(() => {
     isWorkspaceOpenRef.current = workspaceOpen;
     if (workspaceOpen) {
       try { window.speechSynthesis.cancel(); } catch {}
+      isSpeakingRef.current = false;
+      ignoreMicRef.current = false;
     }
   }, [workspaceOpen]);
 
@@ -498,6 +504,12 @@ const AuraAssistant: React.FC = () => {
       cancelAnimationFrame(modalAnimationRef.current);
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
       if (micRestartTimeoutRef.current) clearTimeout(micRestartTimeoutRef.current);
+
+      // FIX: Ensure PiP window closes if the main window unmounts
+      if (pipWindowRef.current) {
+        try { pipWindowRef.current.close(); } catch {}
+        pipWindowRef.current = null;
+      }
     };
   }, []);
 
@@ -643,7 +655,6 @@ const AuraAssistant: React.FC = () => {
   }, [showResponseModal, startAnimation]);
 
   const auraSpeak = useCallback((text: string, overrideVoiceName?: string) => {
-    // FIX: Mute speech synthesis if the Workspace is currently open.
     if (isWorkspaceOpenRef.current) return;
 
     if (!text?.trim() || !("speechSynthesis" in window)) return;
@@ -889,10 +900,45 @@ const AuraAssistant: React.FC = () => {
 
   const runCommand = useCallback(
     async (command: string) => {
-      const cleaned = command.trim().replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
-      if (!cleaned || cleaned.length < 2) return;
+      // 1. Only strip wake words if the command came from the MICROPHONE (Voice)
+      const isVoiceCommand = !isWorkspaceOpenRef.current;
+      
+      let cleaned = command.trim();
+      
+      if (isVoiceCommand) {
+        cleaned = cleaned.replace(/\b(hey aura|okay aura|aura)\b/gi, "").trim();
+      }
 
-      // ── FIX: Clear the active image if the user isn't asking about it ──
+      if (!cleaned || cleaned.length < 1) return;
+
+      // 2. Handle conversational prompts (hi, hello, aura, etc.)
+      const lowerClean = cleaned.toLowerCase().replace(/[.,!?]/g, "").trim();
+      if (["aura", "hey aura", "okay aura", "hi aura", "hello", "hi", "hey"].includes(lowerClean)) {
+        const userId = generateId("u");
+        const assistantId = generateId("a");
+        
+        setChatMessages((prev) => [
+          ...prev,
+          { id: userId, role: "user", content: command.trim(), timestamp: Date.now() },
+          {
+            id: assistantId,
+            role: "assistant",
+            content: "Hey Sir! What's up? How can I help you today?",
+            timestamp: Date.now(),
+            streaming: false,
+            category: "Conversation Follow-up",
+          },
+        ]);
+
+        if (!isWorkspaceOpenRef.current) {
+          auraSpeak("Hey Sir! What's up?");
+        }
+        
+        setStatusText("SYSTEM ONLINE");
+        setTranscriptText("Awaiting your next command.");
+        return;
+      }
+
       const isAskingAboutImage = /\b(describe|what is|who is|look at|see|image|picture|photo|this|that)\b/i.test(cleaned);
       if (!isAskingAboutImage) {
         lastActiveImageRef.current = null;
@@ -922,7 +968,7 @@ const AuraAssistant: React.FC = () => {
         const assistantId = generateId("a");
         setChatMessages((prev) => [
           ...prev,
-          { id: userId, role: "user", content: cleaned, timestamp: Date.now() },
+          { id: userId, role: "user", content: command.trim(), timestamp: Date.now() },
           {
             id: assistantId,
             role: "assistant",
@@ -943,8 +989,8 @@ const AuraAssistant: React.FC = () => {
       const myToken = ++replyTokenRef.current;
       lastPartialReplyRef.current = "";
 
-      addHistory(cleaned);
-      setTranscriptText(`"${cleaned}"`);
+      addHistory(command.trim());
+      setTranscriptText(`"${command.trim()}"`);
       setStatusText("PROCESSING COMMAND");
 
       if (autoCloseTimeoutRef.current) clearTimeout(autoCloseTimeoutRef.current);
@@ -955,7 +1001,7 @@ const AuraAssistant: React.FC = () => {
 
       setChatMessages((prev) => [
         ...prev,
-        { id: userId, role: "user", content: cleaned, timestamp: Date.now() },
+        { id: userId, role: "user", content: command.trim(), timestamp: Date.now() },
         {
           id: assistantId,
           role: "assistant",
@@ -975,7 +1021,6 @@ const AuraAssistant: React.FC = () => {
         }
       }
 
-      // FIX: If workspace is open, pass a silent dummy function to processCommand
       const silentAuraSpeak = isWorkspaceOpenRef.current 
         ? () => {} 
         : auraSpeak;
@@ -1040,7 +1085,6 @@ const AuraAssistant: React.FC = () => {
             activeAssistantMsgIdRef.current = null;
           }
 
-          // ── FIX: Update main panel details if it's a media result ──
           if (isMediaResult) {
             setCommandDetails({
               title: `Media: ${cleaned.replace(/.*\b(pic|picture|photo|image|of)\b/gi, "").trim() || "Search"}`,
@@ -1054,8 +1098,7 @@ const AuraAssistant: React.FC = () => {
             });
           }
 
-          // ── FIX: Allow modal to pop up for media results too ──
-          if (!isMobile && !workspaceOpen && finalText && finalText.trim().length > 0) {
+          if (!isMobile && !isWorkspaceOpenRef.current && finalText && finalText.trim().length > 0) {
             setTimeout(() => {
               if (myToken !== replyTokenRef.current) return;
               setManualOpen(false);
@@ -1089,7 +1132,7 @@ const AuraAssistant: React.FC = () => {
           if (myToken === replyTokenRef.current) inFlightControllerRef.current = null;
         });
     },
-    [addHistory, auraSpeak, stopMic, isMobile, isOnline, workspaceOpen]
+    [addHistory, auraSpeak, stopMic, isMobile, isOnline] 
   );
 
   const setupSpeechRecognition = useCallback(
@@ -1380,7 +1423,6 @@ const AuraAssistant: React.FC = () => {
   }, [showResponseModal, isMobile, manualOpen, commandDetails.category]);
 
   const handlePopOut = useCallback(async () => {
-    // ... your existing PiP implementation ...
     const browser = window as any;
 
     if (!browser.documentPictureInPicture) {
@@ -1551,7 +1593,6 @@ const AuraAssistant: React.FC = () => {
   };
 
   const renderResult = () => {
-    // ── FIX: Render Media Items in the Main Dashboard ──
     if (commandDetails.type === "media" && commandDetails.data?.mediaItems) {
       return (
         <div className="aura-response" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
