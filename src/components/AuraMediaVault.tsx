@@ -7,7 +7,8 @@ import {
   FaImage, 
   FaMagnifyingGlass,
   FaDownload,
-  FaVideo
+  FaVideo,
+  FaPencil
 } from "react-icons/fa6";
 import { supabase } from "../../supabase/supabase-client";
 import "../css/AuraMediaVault.css";
@@ -36,6 +37,12 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
   
   // State for the full-screen viewer
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
+
+  // ── States for Custom Modals ──
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<string | null>(null);
+  const [renameInput, setRenameInput] = useState("");
+  const [renameExt, setRenameExt] = useState(""); // Holds the .jpg or .png
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,32 +97,74 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
     setIsUploading(true);
     try {
       const fileExt = file.name.split(".").pop();
-      // Clean up filename for a nicer display
-      const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "-");
-      const fileName = `${baseName}-${Date.now().toString().slice(-4)}.${fileExt}`;
+      const baseName = file.name.replace(/\.[^/.]+$/, ""); 
+      const safeBaseName = baseName.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9\-_]/g, "");
+      const fileName = `${safeBaseName}.${fileExt}`;
       
-      const { error } = await supabase.storage.from(MEDIA_BUCKET).upload(fileName, file);
+      const { error } = await supabase.storage.from(MEDIA_BUCKET).upload(fileName, file, {
+        upsert: true,
+        cacheControl: '3600',
+        contentType: file.type
+      });
+      
       if (error) throw error;
       
       await fetchFiles(); 
     } catch (err) {
       console.error("Error uploading:", err);
-      alert("Failed to upload media.");
+      alert("Failed to upload media. Check if the filename is valid.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, fileName: string) => {
-    e.stopPropagation(); // Prevent opening the image viewer when deleting
-    if (!window.confirm("Delete this file permanently?")) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      const { error } = await supabase.storage.from(MEDIA_BUCKET).remove([fileName]);
+      setIsLoading(true);
+      const { error } = await supabase.storage.from(MEDIA_BUCKET).remove([deleteTarget]);
       if (error) throw error;
-      setFiles((prev) => prev.filter((f) => f.name !== fileName));
+      setFiles((prev) => prev.filter((f) => f.name !== deleteTarget));
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Error deleting:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const confirmRename = async () => {
+    if (!renameTarget || !renameInput.trim()) {
+      setRenameTarget(null);
+      return;
+    }
+
+    // 1. Clean the name, but force it to NOT have a dot (extension)
+    const safeBaseName = renameInput.trim().replace(/\.[^/.]+$/, "").replace(/\s+/g, "-").replace(/[^a-zA-Z0-9\-_]/g, "");
+    
+    // 2. Combine with the locked original extension
+    const finalName = `${safeBaseName}${renameExt}`;
+
+    // If nothing changed, just close
+    if (finalName === renameTarget) {
+      setRenameTarget(null);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const { error } = await supabase.storage.from(MEDIA_BUCKET).move(renameTarget, finalName);
+      
+      if (error) throw error;
+      
+      await fetchFiles(); 
+      setRenameTarget(null);
+    } catch (err: any) {
+      console.error("Error renaming file:", err);
+      alert(`Failed to rename file: ${err.message || "Make sure the name is unique."}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -125,6 +174,7 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
 
   return (
     <div className={`aura-vault ${lightMode ? "aura-vault-light" : ""}`}>
+      
       {/* ── Header ───────────────────────────────────────────── */}
       <div className="aura-vault-header">
         <div className="aura-vault-title">
@@ -202,13 +252,40 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
                   </span>
                 </div>
 
+                {/* Delete Button */}
                 <button
                   type="button"
-                  className="aura-vault-delete"
-                  onClick={(e) => handleDelete(e, file.name)}
+                  className="aura-vault-delete delete-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteTarget(file.name);
+                  }}
                   title="Delete file"
                 >
-                  <FaTrash />
+                  <FaTrash size={12} />
+                </button>
+
+                {/* Rename Button */}
+                <button
+                  type="button"
+                  className="aura-vault-delete rename-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenameTarget(file.name);
+                    
+                    // Split the name and extension
+                    const lastDotIndex = file.name.lastIndexOf('.');
+                    if (lastDotIndex !== -1) {
+                      setRenameInput(file.name.substring(0, lastDotIndex)); // Just "acky"
+                      setRenameExt(file.name.substring(lastDotIndex));      // Just ".jpg"
+                    } else {
+                      setRenameInput(file.name);
+                      setRenameExt("");
+                    }
+                  }}
+                  title="Rename file"
+                >
+                  <FaPencil size={12} />
                 </button>
               </div>
             ))}
@@ -244,6 +321,56 @@ const AuraMediaVault: React.FC<AuraMediaVaultProps> = ({ onClose, lightMode }) =
           </div>
         </div>
       )}
+
+      {/* ── CUSTOM DELETE MODAL ──────────────────────────────── */}
+      {deleteTarget && (
+        <div className="aura-vault-modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="aura-vault-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="aura-vault-modal-icon danger"><FaTrash /></div>
+            <h3>Delete File?</h3>
+            <p>Are you sure you want to permanently delete <strong>{deleteTarget}</strong>? This cannot be undone.</p>
+            <div className="aura-vault-modal-actions">
+              <button className="cancel-btn" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button className="confirm-btn danger" onClick={confirmDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CUSTOM RENAME MODAL ──────────────────────────────── */}
+      {renameTarget && (
+        <div className="aura-vault-modal-overlay" onClick={() => setRenameTarget(null)}>
+          <div className="aura-vault-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="aura-vault-modal-icon"><FaPencil /></div>
+            <h3>Rename File</h3>
+            <p>Enter a new name for this file. The extension cannot be changed.</p>
+            
+            {/* Input wrapper with locked extension label */}
+            <div className="aura-vault-modal-input-wrap">
+              <input 
+                type="text" 
+                className="aura-vault-modal-input"
+                value={renameInput}
+                onChange={(e) => setRenameInput(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmRename();
+                  if (e.key === "Escape") setRenameTarget(null);
+                }}
+              />
+              <span className="aura-vault-modal-ext">
+                {renameExt}
+              </span>
+            </div>
+
+            <div className="aura-vault-modal-actions">
+              <button className="cancel-btn" onClick={() => setRenameTarget(null)}>Cancel</button>
+              <button className="confirm-btn" onClick={confirmRename}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
