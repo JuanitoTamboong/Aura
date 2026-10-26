@@ -1814,14 +1814,14 @@ const AuraAssistant: React.FC = () => {
           <div
             style={{
               background: lightMode ? "rgba(255, 255, 255, 0.95)" : "rgba(15, 12, 32, 0.95)",
-              border: "1px solid var(--aura-violet)",
+              border: "1px solid var(--aura-border-bright)", // ✅ Fixed: uses border color, not solid accent
               borderRadius: "24px",
               width: "100%",
               maxWidth: isMobile ? "100%" : "900px",
               maxHeight: "90vh",
               display: "flex",
               flexDirection: isMobile ? "column" : "row",
-              boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px var(--aura-violet)",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.6), 0 0 80px var(--aura-border)", // ✅ Fixed
               overflow: "hidden",
               animation: "auraModalPop 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
               transition: "background 450ms ease, border-color 450ms ease",
@@ -1835,13 +1835,15 @@ const AuraAssistant: React.FC = () => {
                 flexDirection: isMobile ? "row" : "column",
                 alignItems: "center",
                 justifyContent: "center",
-                background: "linear-gradient(135deg, var(--aura-violet) 0%, rgba(0,0,0,0) 100%)",
-                borderRight: isMobile ? "none" : "1px solid var(--aura-violet)",
-                borderBottom: isMobile ? "1px solid var(--aura-violet)" : "none",
+                // ✅ Fixed: Removed opacity: 0.1 and made background a subtle gradient
+                background: lightMode 
+                  ? "linear-gradient(135deg, rgba(139,92,246,0.05) 0%, rgba(255,255,255,0) 100%)" 
+                  : "linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(0,0,0,0) 100%)",
+                borderRight: isMobile ? "none" : "1px solid var(--aura-border)",
+                borderBottom: isMobile ? "1px solid var(--aura-border)" : "none",
                 padding: isMobile ? "15px" : "40px",
                 position: "relative",
                 gap: "15px",
-                opacity: 0.1,
               }}
             >
               <div
@@ -1905,7 +1907,7 @@ const AuraAssistant: React.FC = () => {
                   justifyContent: "space-between",
                   alignItems: "flex-start",
                   padding: "20px",
-                  borderBottom: "1px solid var(--aura-violet)",
+                  borderBottom: "1px solid var(--aura-border)", // ✅ Fixed
                 }}
               >
                 <div>
@@ -1932,10 +1934,10 @@ const AuraAssistant: React.FC = () => {
                     setManualOpen(false);
                   }}
                   style={{
-                    background: "var(--aura-violet)",
-                    opacity: 0.2,
-                    border: "1px solid var(--aura-violet)",
-                    color: "var(--aura-violet)",
+                    background: "var(--aura-border)", // ✅ Fixed
+                    opacity: 0.8,
+                    border: "1px solid var(--aura-border-bright)",
+                    color: lightMode ? "#21183c" : "#fff", // ✅ Fixed
                     width: "36px",
                     height: "36px",
                     borderRadius: "50%",
