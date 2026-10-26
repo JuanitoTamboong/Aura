@@ -174,18 +174,22 @@ export const processCommand = async ({
   try {
     // ── SUPABASE MEDIA VAULT SEARCH ─────────────────
     const cleanNormalized = normalized.replace(/[.,!?;:]/g, "").trim();
-    const isAskingForMedia = /\b(show me|find my|get my|send me|send the|send that|pic of|picture of|photo of|image of|where is)\b/i.test(cleanNormalized);
+    
+    // ✅ STRICT TRIGGER: Only search the vault if they use specific keywords
+    const isAskingForMedia = 
+      /\b(show me|find my|get my|send me|send the|send that|pic of|picture of|photo of|image of|where is|show|find|get|send|vault|media|look for|search for)\b/i.test(cleanNormalized) ||
+      /\.(jpg|jpeg|png|gif|webp|mp4|pdf|txt)$/i.test(cleanNormalized);
 
     if (isAskingForMedia) {
       setStatusText("SEARCHING MEDIA VAULT");
       setTranscriptText("Looking through your Supabase storage...");
 
       const searchQuery = cleanNormalized
-        .replace(/\b(can you|could you|would you|please|kindly|for me|show|me|find|my|get|send|the|that|this|pic|pictures?|photos?|images?|of|where|is|are|in|a|an|vault|media|from|file|files|uploaded)\b/gi, "")
+        .replace(/\b(can you|could you|would you|please|kindly|for me|show|me|find|my|get|send|the|that|this|pic|pictures?|photos?|images?|of|where|is|are|in|a|an|vault|media|from|file|files|uploaded|picture|search|look|for)\b/gi, "")
         .replace(/\s+/g, " ")
         .trim();
 
-      if (searchQuery.length > 1) {
+      if (searchQuery.length > 0) {
         try {
           const { data, error } = await supabase.storage.from("aura-media").list();
 
@@ -199,16 +203,34 @@ export const processCommand = async ({
           }
 
           if (data) {
-            const queryWords = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-            
-            const matchedFiles = data.filter(file => {
+            // ✅ 1. EXACT MATCH FIRST (Case-Insensitive)
+            let matchedFiles = data.filter(file => {
               if (file.name === ".emptyFolderPlaceholder") return false;
-              const fileNameLower = file.name.toLowerCase();
-              
-              if (queryWords.length === 0) return fileNameLower.includes(searchQuery.toLowerCase());
-              
-              return queryWords.some(word => fileNameLower.includes(word));
+              return file.name.toLowerCase().includes(searchQuery.toLowerCase());
             });
+
+            // ✅ 2. FUZZY FALLBACK (Only if exact match fails)
+            if (matchedFiles.length === 0) {
+              const cleanStr = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+              const consonants = (s: string) => s.replace(/[aeiou]/g, "");
+
+              const simpleQuery = cleanStr(searchQuery);
+              const consonantQuery = consonants(simpleQuery);
+
+              matchedFiles = data.filter(file => {
+                if (file.name === ".emptyFolderPlaceholder") return false;
+                const cleanName = cleanStr(file.name);
+                const consonantName = consonants(cleanName);
+
+                // 1. Consonant match: "aki" -> "k", "acky" -> "cky" ✅
+                if (consonantQuery.length > 0 && consonantName.includes(consonantQuery)) return true;
+
+                // 2. Short query fallback (only if query is exactly 2 chars)
+                if (simpleQuery.length === 2 && cleanName.includes(simpleQuery.substring(0, 2))) return true;
+
+                return false;
+              });
+            }
 
             if (matchedFiles.length > 0) {
               const mediaItems = matchedFiles.map(file => {
@@ -244,9 +266,10 @@ export const processCommand = async ({
               return { text: summary, mediaItems };
             }
 
+            // If we still fail, tell the user clearly
             setStatusText("SYSTEM ONLINE");
             return await respond(
-              `I searched your Media Vault but couldn't find anything matching "${searchQuery}".`,
+              `I searched your Media Vault but couldn't find anything matching "${searchQuery}".`, 
               { title: "No Matches", category: "Media Vault", match: "0%", data: `No files contain "${searchQuery}".` }
             );
           }
@@ -553,7 +576,6 @@ export const processCommand = async ({
     addUserTurn(originalCommand);
 
     // ── USE ADVANCED SETTINGS FOR AI ──
-    // Determine the max tokens to send based on user setting OR fallback to smart logic
     const finalMaxTokens = settings.advanced.maxTokens && settings.advanced.maxTokens !== 1200
       ? settings.advanced.maxTokens
       : (hasDocumentContext ? 2500 : (wantsLongForm ? 1200 : 220));
@@ -568,8 +590,6 @@ export const processCommand = async ({
       signal,
       maxTokens: finalMaxTokens,
       temperature: wantsLongForm ? 0.7 : 0.6,
-      // If you add modelOverride to your API, you would pass it here:
-      // model: settings.advanced.modelOverride || undefined, 
       onToken: (d) => {
         partial += d;
         onPartialReply?.(partial);
