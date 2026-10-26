@@ -68,10 +68,12 @@ const AuraSettings: React.FC<Props> = ({
     onConfirm: () => void;
   } | null>(null);
 
+  // Sync draft with persisted state when the modal opens
   useEffect(() => {
     setDraftSettings(loadSettings());
   }, []);
 
+  // ── COMMIT: only called from Done / Reset, writes to localStorage ──
   const persistAndNotify = useCallback(
     (next: AuraSettingsType) => {
       setDraftSettings(next);
@@ -86,12 +88,14 @@ const AuraSettings: React.FC<Props> = ({
       name: draftSettings.profile.name, 
       facts: draftSettings.profile.facts 
     });
+    // ✅ Only Done writes to localStorage
     saveSettings(draftSettings);
     onChange(draftSettings);
     onClose();
   };
 
   const handleCancel = () => {
+    // ✅ Cancel reads the last SAVED state and reverts the parent's preview
     const originalSettings = loadSettings();
     onChange(originalSettings);
     onClose();
@@ -134,6 +138,10 @@ const AuraSettings: React.FC<Props> = ({
     });
   };
 
+  // ──────────────────────────────────────────────────────────────────
+  // ✅ PREVIEW ONLY — update draft + notify parent for LIVE preview.
+  //    Do NOT call saveSettings here. Only Done / Reset commit.
+  // ──────────────────────────────────────────────────────────────────
   const handleAppearanceChange = (
     newAppearance: Partial<AuraSettingsType["appearance"]>
   ) => {
@@ -141,7 +149,8 @@ const AuraSettings: React.FC<Props> = ({
       ...draftSettings,
       appearance: { ...draftSettings.appearance, ...newAppearance },
     };
-    persistAndNotify(nextSettings);
+    setDraftSettings(nextSettings);
+    onChange(nextSettings); // live preview; NOT persisted
   };
 
   return (

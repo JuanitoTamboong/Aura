@@ -2355,8 +2355,9 @@ const AuraAssistant: React.FC = () => {
           lightMode={lightMode}
           onClose={() => setSettingsOpen(false)}
           onChange={(newSettings) => {
+            // ✅ Preview-only: do NOT save to localStorage here.
+            // Saving to localStorage only happens when the user clicks "Done" inside AuraSettings.
             setSettings(newSettings);
-            saveSettings(newSettings);
           }}
           availableVoices={availableVoices}
           selectedVoiceName={selectedVoiceName}
