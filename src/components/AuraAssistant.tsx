@@ -308,12 +308,17 @@ const AuraAssistant: React.FC = () => {
     };
   };
 
-  const startResize = (e: React.MouseEvent) => {
+  const startResize = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     isResizingRef.current = true;
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
     resizeStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
+      x: clientX,
+      y: clientY,
       w: embedSize.w,
       h: embedSize.h,
     };
@@ -2473,34 +2478,31 @@ const AuraAssistant: React.FC = () => {
                   style={{ width: "100%", height: "100%", border: "none", display: "block" }}
                 />
                 
+                {/* ✅ IMPROVED: Minimalist corner resize handle */}
                 {!isMobile && (
                   <div
                     onMouseDown={startResize}
                     style={{
                       position: "absolute",
-                      bottom: "8px",
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      padding: "6px 24px",
+                      bottom: "0",
+                      right: "0",
+                      width: "20px",
+                      height: "20px",
                       cursor: "nwse-resize",
-                      background: "var(--aura-violet)",
-                      border: "2px solid #fff",
-                      borderRadius: "20px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
                       zIndex: 2147483647,
                       display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "white",
-                      fontSize: "11px",
-                      fontFamily: "var(--aura-display)",
-                      letterSpacing: "0.1em",
-                      fontWeight: "bold",
-                      userSelect: "none",
-                      opacity: 0.8
+                      alignItems: "flex-end",
+                      justifyContent: "flex-end",
+                      padding: "2px",
+                      background: "transparent",
                     }}
+                    title="Drag to resize"
                   >
-                    DRAG TO RESIZE
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="5" y1="21" x2="21" y2="5"></line>
+                      <line x1="12" y1="21" x2="21" y2="12"></line>
+                      <line x1="19" y1="21" x2="21" y2="19"></line>
+                    </svg>
                   </div>
                 )}
               </div>
