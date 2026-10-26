@@ -529,9 +529,12 @@ export const processCommand = async ({
         ? "\nFACT: Juanito Tamboong's girlfriend is Rizalyn Uy."
         : "");
 
+    // FIX: If a document is loaded, NEVER treat the question as a short follow-up.
     const isFollowUp =
-      /\b(it|that|this|those|them|why|how come|what about|and then|what happened)\b/i.test(normalized) ||
-      normalized.split(/\s+/).length <= 4;
+      !hasDocumentContext && (
+        /\b(it|that|this|those|them|why|how come|what about|and then|what happened)\b/i.test(normalized) ||
+        normalized.split(/\s+/).length <= 4
+      );
 
     // FIX: If we have a document, we ALWAYS need long-form generation so the AI has room to answer
     const wantsLongForm =
