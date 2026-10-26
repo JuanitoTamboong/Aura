@@ -253,20 +253,28 @@ const AuraAssistant: React.FC = () => {
 
   // ✅ Global mouse listeners for dragging/resizing
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isDraggingRef.current) {
-        const dx = e.clientX - dragStartRef.current.x;
-        const dy = e.clientY - dragStartRef.current.y;
-        setEmbedPos({ x: dx, y: dy });
+    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDraggingRef.current) {
+        // Handle resize only if not dragging
+        if (isResizingRef.current) {
+          const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+          const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+          const dx = clientX - resizeStartRef.current.x;
+          const dy = clientY - resizeStartRef.current.y;
+          setEmbedSize({
+            w: Math.max(320, resizeStartRef.current.w + dx),
+            h: Math.max(220, resizeStartRef.current.h + dy),
+          });
+        }
+        return;
       }
-      if (isResizingRef.current) {
-        const dx = e.clientX - resizeStartRef.current.x;
-        const dy = e.clientY - resizeStartRef.current.y;
-        setEmbedSize({
-          w: Math.max(320, resizeStartRef.current.w + dx),
-          h: Math.max(220, resizeStartRef.current.h + dy),
-        });
-      }
+
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+      const dx = clientX - dragStartRef.current.x;
+      const dy = clientY - dragStartRef.current.y;
+      setEmbedPos({ x: dx, y: dy });
     };
 
     const handleMouseUp = () => {
@@ -276,19 +284,27 @@ const AuraAssistant: React.FC = () => {
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("touchmove", handleMouseMove, { passive: false });
+    document.addEventListener("touchend", handleMouseUp);
 
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("touchmove", handleMouseMove);
+      document.removeEventListener("touchend", handleMouseUp);
     };
   }, []);
 
-  const startDrag = (e: React.MouseEvent) => {
+  const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
     if ((e.target as HTMLElement).closest("button")) return; 
     isDraggingRef.current = true;
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
     dragStartRef.current = { 
-      x: e.clientX - embedPos.x, 
-      y: e.clientY - embedPos.y 
+      x: clientX - embedPos.x, 
+      y: clientY - embedPos.y 
     };
   };
 
@@ -2391,70 +2407,102 @@ const AuraAssistant: React.FC = () => {
                 position: "fixed",
                 top: "50%",
                 left: "50%",
-                transform: `translate(calc(-50% + ${embedPos.x}px), calc(-50% + ${embedPos.y}px))`,
-                width: embedSize.w,
-                height: embedSize.h,
+                transform: isMobile 
+                  ? "translate(-50%, -50%)" 
+                  : `translate(calc(-50% + ${embedPos.x}px), calc(-50% + ${embedPos.y}px))`,
+                width: isMobile ? "92vw" : embedSize.w,
+                height: isMobile ? "auto" : embedSize.h,
+                aspectRatio: isMobile ? "16/9" : "auto",
+                maxHeight: isMobile ? "80vh" : "none",
                 zIndex: 99999,
                 display: "flex",
                 flexDirection: "column",
-                resize: "none", 
+                resize: "none",
+                overflow: "hidden",
+                borderRadius: "16px",
+                boxShadow: "0 20px 50px rgba(0,0,0,0.7)",
+                border: "1px solid var(--aura-border-bright)",
               }}
             >
               <div
                 className="aura-embed-header"
-                style={{ cursor: "move" }}
-                onMouseDown={startDrag}
+                style={{ 
+                  cursor: isMobile ? "default" : "move",
+                  padding: "10px 15px",
+                  background: "var(--aura-panel)",
+                  borderBottom: "1px solid var(--aura-border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between"
+                }}
+                onMouseDown={!isMobile ? startDrag : undefined}
               >
-                <span className="aura-live-dot" />
-                <span>EMBEDDED PLAYER</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span className="aura-live-dot" />
+                  <span>EMBEDDED PLAYER</span>
+                </div>
                 <button
                   type="button"
                   className="aura-embed-close"
                   onClick={() => {
                     setEmbeddedVideo(null);
-                    setEmbedPos({ x: 0, y: 0 }); // Reset position on close
+                    setEmbedPos({ x: 0, y: 0 });
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--aura-text)",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                    padding: "5px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px"
                   }}
                 >
-                  CLOSE
+                  <FaXmark /> CLOSE
                 </button>
               </div>
-              <div className="aura-embed-frame" style={{ flex: 1, position: "relative" }}>
+              <div style={{ flex: 1, position: "relative", background: "#000" }}>
                 <iframe
                   src={embeddedVideo}
                   title="Aura Embedded Player"
                   allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                   allowFullScreen
-                  style={{ width: "100%", height: "100%", border: "none" }}
+                  style={{ width: "100%", height: "100%", border: "none", display: "block" }}
                 />
                 
-                {/* ✅ FIXED: Resize handle is now a visible tab at the bottom-center */}
-                <div
-                  onMouseDown={startResize}
-                  style={{
-                    position: "absolute",
-                    bottom: "8px",
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    padding: "6px 24px",
-                    cursor: "nwse-resize",
-                    background: "var(--aura-violet)",
-                    border: "2px solid #fff",
-                    borderRadius: "20px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
-                    zIndex: 2147483647, // Max z-index
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "white",
-                    fontSize: "11px",
-                    fontFamily: "var(--aura-display)",
-                    letterSpacing: "0.1em",
-                    fontWeight: "bold",
-                    userSelect: "none",
-                  }}
-                >
-                  DRAG TO RESIZE
-                </div>
+                {!isMobile && (
+                  <div
+                    onMouseDown={startResize}
+                    style={{
+                      position: "absolute",
+                      bottom: "8px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      padding: "6px 24px",
+                      cursor: "nwse-resize",
+                      background: "var(--aura-violet)",
+                      border: "2px solid #fff",
+                      borderRadius: "20px",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
+                      zIndex: 2147483647,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "white",
+                      fontSize: "11px",
+                      fontFamily: "var(--aura-display)",
+                      letterSpacing: "0.1em",
+                      fontWeight: "bold",
+                      userSelect: "none",
+                      opacity: 0.8
+                    }}
+                  >
+                    DRAG TO RESIZE
+                  </div>
+                )}
               </div>
             </div>
           )}
