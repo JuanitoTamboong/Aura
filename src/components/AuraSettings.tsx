@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { 
   FaXmark, 
-  FaGear,          // <-- Fixed: Was FaCog
+  FaGear,
   FaMicrophone, 
   FaUser, 
   FaBook, 
@@ -62,6 +62,17 @@ const AuraSettings: React.FC<Props> = ({
   const [settings, setSettings] = useState<AuraSettingsType>(() => loadSettings());
   const saveTimerRef = useRef<any>(null);
 
+  // ✅ FIX: Sync local settings state if the parent lightMode prop changes
+  useEffect(() => {
+    setSettings((prev) => {
+      if (prev.appearance.lightMode === lightMode) return prev;
+      return {
+        ...prev,
+        appearance: { ...prev.appearance, lightMode }
+      };
+    });
+  }, [lightMode]);
+
   // Auto-save with 300ms debounce
   useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -97,6 +108,7 @@ const AuraSettings: React.FC<Props> = ({
 
   return (
     <div className="aura-settings-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      {/* ✅ The class instantly reacts to lightMode props */}
       <div className={`aura-settings-shell ${lightMode ? "" : "is-dark"}`}>
         
         {/* HEADER */}
