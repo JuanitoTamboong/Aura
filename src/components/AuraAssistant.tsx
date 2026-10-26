@@ -24,6 +24,7 @@ import {
   FaComments,
   FaImages,
   FaGear,
+  FaFileLines,
 } from "react-icons/fa6";
 import { FaRegMoon, FaRegSun } from "react-icons/fa";
 
@@ -1150,8 +1151,13 @@ const AuraAssistant: React.FC = () => {
           }
 
           if (isMediaResult) {
+            // ✅ FIX: Extract the real file name for the title
+            const firstUrl = result.mediaItems[0].url;
+            const rawFileName = decodeURIComponent(firstUrl.split('/').pop()?.split('?')[0] || "File");
+            const cleanTitle = rawFileName.replace(/\.[^/.]+$/, ""); // Remove extension
+
             setCommandDetails({
-              title: `Media: ${cleaned.replace(/.*\b(pic|picture|photo|image|of)\b/gi, "").trim() || "Search"}`,
+              title: cleanTitle,
               category: "Media Vault",
               match: "100%",
               type: "media",
@@ -1160,6 +1166,12 @@ const AuraAssistant: React.FC = () => {
                 mediaItems: result.mediaItems
               }
             });
+          } else {
+            // Only set the AI text title if we're NOT in the middle of a document read
+            // (AuraCommand handles setting the doc title during read)
+            if (commandDetailsRef.current?.category !== "AI Knowledge" || !commandDetailsRef.current?.data?.includes("Reading document")) {
+               // Do nothing here; AuraCommand already set the correct title in setCommandDetails
+            }
           }
 
           if (!isMobile && !isWorkspaceOpenRef.current && finalText && finalText.trim().length > 0) {
@@ -1673,6 +1685,7 @@ const AuraAssistant: React.FC = () => {
   };
 
   const renderResult = () => {
+    // ✅ FIXED: Properly handle images, videos, AND documents
     if (commandDetails.type === "media" && commandDetails.data?.mediaItems) {
       return (
         <div className="aura-response" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1683,19 +1696,77 @@ const AuraAssistant: React.FC = () => {
           </div>
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', 
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', 
             gap: '10px',
             marginTop: '10px'
           }}>
-            {commandDetails.data.mediaItems.map((media: any, idx: number) => (
-              <div key={idx} style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--aura-border)' }}>
-                {media.type === "image" ? (
-                  <img src={media.url} alt="Aura Media" style={{ width: '100%', height: 'auto', display: 'block' }} />
-                ) : (
-                  <video src={media.url} controls style={{ width: '100%', display: 'block' }} />
-                )}
-              </div>
-            ))}
+            {commandDetails.data.mediaItems.map((media: any, idx: number) => {
+              const url: string = media.url || "";
+              const fileName = decodeURIComponent(url.split('/').pop()?.split('?')[0] || "file");
+              const isImage = media.type === "image" || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(fileName);
+              const isVideo = media.type === "video" || /\.(mp4|webm|ogg|mov)$/i.test(fileName);
+
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    border: '1px solid var(--aura-border)',
+                    background: "var(--aura-panel)",
+                  }}
+                >
+                  {isImage ? (
+                    <img
+                      src={url}
+                      alt={fileName}
+                      style={{ width: '100%', height: 'auto', display: 'block' }}
+                    />
+                  ) : isVideo ? (
+                    <video src={url} controls style={{ width: '100%', display: 'block' }} />
+                  ) : (
+                    // ✅ Document card (.docx, .pdf, .txt, etc.)
+                    <div style={{
+                      padding: "20px 14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "10px",
+                      minHeight: "150px",
+                      justifyContent: "center"
+                    }}>
+                      <FaFileLines size={38} color="var(--aura-violet)" />
+                      <span style={{
+                        fontSize: "12px",
+                        color: "var(--aura-text)",
+                        textAlign: "center",
+                        wordBreak: "break-all",
+                        lineHeight: 1.4,
+                        maxWidth: "100%"
+                      }}>
+                        {fileName}
+                      </span>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          padding: "8px 14px",
+                          background: "var(--aura-violet)",
+                          color: "#fff",
+                          borderRadius: "6px",
+                          textDecoration: "none",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Open File
+                      </a>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       );

@@ -178,7 +178,7 @@ export const processCommand = async ({
     // ✅ STRICT TRIGGER: Only search the vault if they use specific keywords
     const isAskingForMedia = 
       /\b(show me|find my|get my|send me|send the|send that|pic of|picture of|photo of|image of|where is|show|find|get|send|vault|media|look for|search for)\b/i.test(cleanNormalized) ||
-      /\.(jpg|jpeg|png|gif|webp|mp4|pdf|txt)$/i.test(cleanNormalized);
+      /\.(jpg|jpeg|png|gif|webp|mp4|pdf|txt|docx)$/i.test(cleanNormalized);
 
     if (isAskingForMedia) {
       setStatusText("SEARCHING MEDIA VAULT");
@@ -243,6 +243,10 @@ export const processCommand = async ({
                 };
               });
 
+              // ✅ FIX: Use the actual file name, not the raw prompt
+              const firstFileName = matchedFiles[0].name;
+              const displayName = firstFileName.replace(/\.[^/.]+$/, ""); // Remove extension
+
               setStatusText("MEDIA FOUND");
               const summary = `I found **${matchedFiles.length}** file(s) matching "${searchQuery}":`;
               setTranscriptText(`Here is what I found for "${searchQuery}".`);
@@ -250,7 +254,7 @@ export const processCommand = async ({
               addUserTurn(originalCommand);
               addAssistantTurn(summary);
               setCommandDetails({
-                title: `Media: ${searchQuery}`,
+                title: displayName,
                 category: "Media Vault",
                 match: "100%",
                 type: "media",
@@ -485,12 +489,9 @@ export const processCommand = async ({
     }
 
     // ── AI FALLBACK (streaming) ─────────────────────────────────
-    setCommandDetails({
-      title: text.toUpperCase(), category: "AI Knowledge",
-      match: "...", type: "text", data: "",
-    });
-
+    
     let hasDocumentContext = false;
+    let documentTitle = ""; // ✅ Local variable to store the file name
 
     // 1. Check if there is an active file in memory
     if (activeImageUrl) {
@@ -514,12 +515,23 @@ export const processCommand = async ({
              const savedText = docData.extracted_text;
              const realFileName = docData.file_name;
              
+             // ✅ Save the clean title locally
+             documentTitle = realFileName.replace(/\.[^/.]+$/, "");
+             setCommandDetails({
+               title: documentTitle,
+               category: "AI Knowledge",
+               match: "100%",
+               type: "text",
+               data: "Reading document..."
+             });
+
              text = `Please read the following ${fileExt.toUpperCase()} document named "${realFileName}" and answer my question based on its contents.\n\n[START OF DOCUMENT]\n${savedText.slice(0, 15000)}\n[END OF DOCUMENT]\n\nDo NOT repeat the document back to me. Instead, directly answer this request: "${text}"`;
              hasDocumentContext = true;
            } else {
              console.error("DB Error or Empty Text:", docError);
              text = `The user is asking about the document "${rawFileName}", but I couldn't find its text in the database. Please ask the user to copy-paste the text. User's request: "${text}"`;
              hasDocumentContext = true;
+             documentTitle = baseSearchName;
            }
         }
         // ── IMAGES ──
@@ -545,6 +557,14 @@ export const processCommand = async ({
       } catch (err) {
         console.error("File reading error:", err);
       }
+    }
+
+    // ✅ Only set the initial AI title if NOT reading a document
+    if (!hasDocumentContext) {
+      setCommandDetails({
+        title: text.toUpperCase(), category: "AI Knowledge",
+        match: "...", type: "text", data: "",
+      });
     }
 
     const profile = getUserProfile();
@@ -593,10 +613,15 @@ export const processCommand = async ({
       onToken: (d) => {
         partial += d;
         onPartialReply?.(partial);
-        setCommandDetails({
-          title: text.toUpperCase(), category: isFollowUp ? "Conversation Follow-up" : "AI Knowledge",
-          match: "STREAMING", type: "text", data: partial,
-        });
+        
+        // ✅ Only update title while streaming if NOT reading a doc
+        if (!hasDocumentContext) {
+          setCommandDetails({
+            title: text.toUpperCase(), 
+            category: isFollowUp ? "Conversation Follow-up" : "AI Knowledge",
+            match: "STREAMING", type: "text", data: partial,
+          });
+        }
       },
     });
 
@@ -607,11 +632,22 @@ export const processCommand = async ({
     await Promise.resolve(auraSpeak(toSpokenText(finalReply, wantsLongForm ? 8 : 3)));
 
     setStatusText("SYSTEM ONLINE");
-    setCommandDetails({
-      title: text.toUpperCase(),
-      category: isFollowUp ? "Conversation Follow-up" : "AI Knowledge",
-      match: "100%", type: "text", data: finalReply,
-    });
+    
+    // ✅ If it's a document reading, keep the filename title
+    if (hasDocumentContext) {
+       setCommandDetails({
+         title: documentTitle || text.toUpperCase(), // ✅ Use the local variable
+         category: "AI Knowledge",
+         match: "100%", type: "text", data: finalReply,
+       });
+    } else {
+      setCommandDetails({
+        title: text.toUpperCase(),
+        category: isFollowUp ? "Conversation Follow-up" : "AI Knowledge",
+        match: "100%", type: "text", data: finalReply,
+      });
+    }
+
     return finalReply;
 
   } catch (err) {
