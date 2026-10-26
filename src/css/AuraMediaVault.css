@@ -132,6 +132,29 @@
   gap: 20px;
 }
 
+/* ── Section Headers ────────────────────────────────────── */
+.aura-vault-section {
+  margin-bottom: 40px;
+}
+
+.aura-vault-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--aura-display);
+  font-size: 16px;
+  color: var(--aura-violet);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+  letter-spacing: 0.05em;
+}
+
+.aura-vault-light .aura-vault-section-title {
+  color: #21183c;
+  border-bottom-color: rgba(139, 92, 246, 0.15);
+}
+
 /* ── Individual Media Card ──────────────────────────────── */
 .aura-vault-item {
   position: relative;
@@ -185,6 +208,27 @@
   color: white;
   font-size: 28px;
   pointer-events: none;
+}
+
+/* ── Document Thumbnail ─────────────────────────────────── */
+.aura-vault-doc {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--aura-text);
+  gap: 8px;
+}
+.aura-vault-light .aura-vault-doc {
+  background: rgba(139, 92, 246, 0.05);
+}
+.aura-vault-doc span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
 }
 
 .aura-vault-info {

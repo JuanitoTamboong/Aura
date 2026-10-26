@@ -869,3 +869,33 @@ export const toSpokenText = (
 
   return result;
 };
+
+// ── Document Reading ───────────────────────────────────────────────
+
+export async function readDocumentText(fileUrl: string, signal?: AbortSignal): Promise<string> {
+  try {
+    // 1. Fetch the file from Supabase URL
+    const response = await fetch(fileUrl, { signal });
+    if (!response.ok) throw new Error("Could not download the file.");
+
+    // 2. Check the file type
+    const contentType = response.headers.get("content-type") || "";
+
+    // 3. If it's a plain text or CSV, read it as text
+    if (contentType.includes("text") || contentType.includes("csv") || fileUrl.endsWith(".txt") || fileUrl.endsWith(".csv")) {
+      return await response.text();
+    }
+
+    // 4. If it's a PDF or Word doc, we can't easily parse it in the browser without a library.
+    // For now, we will return a placeholder message. 
+    // (To actually read PDFs, you would need to install `pdfjs-dist` via npm)
+    if (contentType.includes("pdf") || fileUrl.endsWith(".pdf")) {
+      return "This is a PDF document. Please summarize the contents based on the user's prompt if you have access to the URL.";
+    }
+
+    return "File format not natively supported for direct text extraction in the browser.";
+  } catch (error) {
+    console.error("Error reading document:", error);
+    return "";
+  }
+}

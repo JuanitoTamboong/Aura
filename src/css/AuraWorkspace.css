@@ -440,6 +440,37 @@
   object-fit: cover;
 }
 
+/* ── Document File Fallback ─────────────────────────────── */
+/* NEW: Styles for documents or unsupported files in the chat */
+
+.aura-ws-doc-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(139, 92, 246, 0.08);
+  border-radius: 8px;
+  color: var(--aura-violet);
+  gap: 12px;
+  border: 1px dashed rgba(139, 92, 246, 0.4);
+}
+
+.aura-ws-doc-file a {
+  color: var(--aura-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: rgba(139, 92, 246, 0.2);
+  transition: background 180ms;
+}
+
+.aura-ws-doc-file a:hover {
+  background: rgba(139, 92, 246, 0.4);
+}
+
 /* ── Streaming cursor ───────────────────────────────────── */
 
 .aura-ws-cursor {
@@ -700,6 +731,20 @@
 
 .aura-workspace-light .aura-ws-input { color: #21183c; }
 .aura-workspace-light .aura-ws-input::placeholder { color: #8a82a6; }
+
+.aura-workspace-light .aura-ws-doc-file {
+  background: rgba(139, 92, 246, 0.05);
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
+.aura-workspace-light .aura-ws-doc-file a {
+  color: #30274b;
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.aura-workspace-light .aura-ws-doc-file a:hover {
+  background: rgba(139, 92, 246, 0.25);
+}
 
 /* ── Mobile ─────────────────────────────────────────────── */
 

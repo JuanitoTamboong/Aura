@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FaPaperPlane, FaStop, FaTrash, FaXmark, FaPlus } from "react-icons/fa6";
+import { FaPaperPlane, FaStop, FaTrash, FaXmark, FaPlus, FaFileLines } from "react-icons/fa6";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import auraLogo from "../assets/images/Aura-Logo-fix.webp";
@@ -12,8 +12,8 @@ export interface ChatMessage {
   timestamp: number;
   streaming?: boolean;
   category?: string;
-  // 1. Added mediaItems so the chat can hold images/videos
-  mediaItems?: Array<{ url: string; type: "image" | "video" }>; 
+  // Updated to include "document"
+  mediaItems?: Array<{ url: string; type: "image" | "video" | "document" }>; 
 }
 
 interface AuraWorkspaceProps {
@@ -199,18 +199,31 @@ const AuraWorkspace: React.FC<AuraWorkspaceProps> = ({
                         {msg.content || "…"}
                       </ReactMarkdown>
 
-                      {/* 2. Render Media Items (Images/Videos) inside the bubble */}
+                      {/* Render Media Items (Images/Videos/Documents) inside the bubble */}
                       {msg.mediaItems && msg.mediaItems.length > 0 && (
                         <div className="aura-ws-media-grid">
-                          {msg.mediaItems.map((media, idx) => (
-                            <div key={idx} className="aura-ws-media-item">
-                              {media.type === "image" ? (
-                                <img src={media.url} alt="Aura Media" loading="lazy" />
-                              ) : (
-                                <video src={media.url} controls />
-                              )}
-                            </div>
-                          ))}
+                          {msg.mediaItems.map((media, idx) => {
+                            // Check if it actually has a video extension to prevent broken players
+                            const isPlayableVideo = media.url.match(/\.(mp4|webm|ogg|mov)$/i);
+                            
+                            return (
+                              <div key={idx} className="aura-ws-media-item">
+                                {media.type === "image" ? (
+                                  <img src={media.url} alt="Aura Media" loading="lazy" />
+                                ) : isPlayableVideo ? (
+                                  <video src={media.url} controls />
+                                ) : (
+                                  // Fallback for documents or unsupported video formats
+                                  <div className="aura-ws-doc-file">
+                                    <FaFileLines size={30} />
+                                    <a href={media.url} target="_blank" rel="noreferrer">
+                                      Open File
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
 

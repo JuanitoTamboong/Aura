@@ -35,43 +35,6 @@ interface CommandProps {
 const turnsToMessages = (t: ConversationTurn[]): ChatMessage[] =>
   t.map((x) => ({ role: x.role, content: x.text }));
 
-// Compress and convert to Base64 text
-const compressAndEncodeImage = (url: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = url;
-
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return reject("Canvas not supported");
-
-      const MAX_WIDTH = 800;
-      const MAX_HEIGHT = 800;
-      let width = img.width;
-      let height = img.height;
-
-      if (width > height && width > MAX_WIDTH) {
-        height *= MAX_WIDTH / width;
-        width = MAX_WIDTH;
-      } else if (height > MAX_HEIGHT) {
-        width *= MAX_HEIGHT / height;
-        height = MAX_HEIGHT;
-      }
-
-      canvas.width = width;
-      canvas.height = height;
-      ctx.drawImage(img, 0, 0, width, height);
-
-      const base64 = canvas.toDataURL("image/jpeg", 0.7);
-      resolve(base64);
-    };
-
-    img.onerror = (err) => reject(err);
-  });
-};
-
 export const processCommand = async ({
   cmd, auraDatabase, setStatusText, setTranscriptText,
   setCommandDetails, auraSpeak, stopMic, setEmbeddedVideo,
@@ -167,7 +130,9 @@ export const processCommand = async ({
   setStatusText("PROCESSING COMMAND");
 
   const command = originalCommand.replace(/\baura\b/gi, "").replace(/^\s*[\s,.:;-]+/, "").trim();
-  const text = command || originalCommand;
+  
+  let text = command || originalCommand;
+  
   const normalized = text.toLowerCase().replace(/\b(aur+a|hey aura|okay aura)\b/gi, "").trim();
 
   const respond = async (
@@ -206,7 +171,6 @@ export const processCommand = async ({
       setStatusText("SEARCHING MEDIA VAULT");
       setTranscriptText("Looking through your Supabase storage...");
 
-      // Strip filler words to isolate the actual file name (e.g., "korumi")
       const searchQuery = cleanNormalized
         .replace(/\b(can you|could you|would you|please|kindly|for me|show|me|find|my|get|send|the|that|this|pic|pictures?|photos?|images?|of|where|is|are|in|a|an|vault|media|from|file|files|uploaded)\b/gi, "")
         .replace(/\s+/g, " ")
@@ -226,25 +190,26 @@ export const processCommand = async ({
           }
 
           if (data) {
-            // Split user query into distinct words (ignoring very short words)
             const queryWords = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
             
             const matchedFiles = data.filter(file => {
               if (file.name === ".emptyFolderPlaceholder") return false;
               const fileNameLower = file.name.toLowerCase();
               
-              // If no distinct words, fallback to exact substring
               if (queryWords.length === 0) return fileNameLower.includes(searchQuery.toLowerCase());
               
-              // Match if the filename contains ANY of the keywords
               return queryWords.some(word => fileNameLower.includes(word));
             });
 
             if (matchedFiles.length > 0) {
               const mediaItems = matchedFiles.map(file => {
                 const { data: { publicUrl } } = supabase.storage.from("aura-media").getPublicUrl(file.name);
-                const isVideo = /\.(mp4|webm|ogg|mov|mkv|avi)$/i.test(file.name);
-                return { url: publicUrl, type: isVideo ? "video" : "image" };
+                const isVideo = /\.(mp4|webm|ogg|mov)$/i.test(file.name);
+                const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.name);
+                return { 
+                  url: publicUrl, 
+                  type: isImage ? "image" : isVideo ? "video" : "document" 
+                };
               });
 
               setStatusText("MEDIA FOUND");
@@ -258,17 +223,18 @@ export const processCommand = async ({
                 category: "Media Vault",
                 match: "100%",
                 type: "media",
-                data: summary,
+                data: {
+                  text: summary,
+                  mediaItems: mediaItems
+                },
               });
               
               await Promise.resolve(auraSpeak(`Here ${matchedFiles.length === 1 ? "it is" : "they are"}.`));
               setStatusText("SYSTEM ONLINE");
 
-              // Return object with mediaItems for the UI to render
               return { text: summary, mediaItems };
             }
 
-            // Nothing matched
             setStatusText("SYSTEM ONLINE");
             return await respond(
               `I searched your Media Vault but couldn't find anything matching "${searchQuery}".`,
@@ -285,7 +251,6 @@ export const processCommand = async ({
         }
       }
 
-      // Query was too short / empty after stripping
       setStatusText("SYSTEM ONLINE");
       return await respond(
         "What would you like me to find in your Media Vault?",
@@ -493,34 +458,66 @@ export const processCommand = async ({
       match: "...", type: "text", data: "",
     });
 
-    // 1. If there is an active image, use the Vision API instead of the streaming text API
+    let hasDocumentContext = false;
+
+    // 1. Check if there is an active file in memory
     if (activeImageUrl) {
       try {
-        setStatusText("ANALYZING IMAGE...");
-        // Ask the AI to describe the image
-        const visionReply = await askAIVision(activeImageUrl, text, { signal });
-        
-        addUserTurn(originalCommand);
-        addAssistantTurn(visionReply);
+        const rawFileName = decodeURIComponent(activeImageUrl.split('/').pop() || "document");
+        const fileExt = rawFileName.split('.').pop()?.toLowerCase() || "";
 
-        setStatusText("SPEAKING");
-        await Promise.resolve(auraSpeak(toSpokenText(visionReply)));
-        setStatusText("SYSTEM ONLINE");
-        
-        setCommandDetails({
-          title: "Image Analysis",
-          category: "Vision",
-          match: "100%", type: "text", data: visionReply,
-        });
-        
-        return visionReply;
+        // ── FETCH FROM SUPABASE DB ──
+        if (["txt", "csv", "md", "pdf", "docx", "xlsx"].includes(fileExt)) {
+           setStatusText(`READING ${fileExt.toUpperCase()} FILE...`);
+           
+           // FIX: Use .ilike() to ignore capitalization and partial matches
+           const baseSearchName = rawFileName.replace(/\.[^/.]+$/, ""); 
+           
+           const { data: docData, error: docError } = await supabase
+             .from("documents")
+             .select("extracted_text, file_name")
+             .ilike("file_name", `%${baseSearchName}%`)
+             .single();
+
+           if (!docError && docData?.extracted_text) {
+             const savedText = docData.extracted_text;
+             const realFileName = docData.file_name;
+             
+             text = `Please read the following ${fileExt.toUpperCase()} document named "${realFileName}" and answer my question based on its contents.\n\n[START OF DOCUMENT]\n${savedText.slice(0, 15000)}\n[END OF DOCUMENT]\n\nDo NOT repeat the document back to me. Instead, directly answer this request: "${text}"`;
+             hasDocumentContext = true;
+           } else {
+             console.error("DB Error or Empty Text:", docError);
+             // Fallback if the text wasn't found in the DB
+             text = `The user is asking about the document "${rawFileName}", but I couldn't find its text in the database. Please ask the user to copy-paste the text. User's request: "${text}"`;
+             hasDocumentContext = true;
+           }
+        }
+        // ── IMAGES ──
+        else if (["jpg", "jpeg", "png", "gif", "webp"].includes(fileExt)) {
+           setStatusText("ANALYZING IMAGE...");
+           const visionReply = await askAIVision(activeImageUrl, text, { signal });
+           
+           addUserTurn(originalCommand);
+           addAssistantTurn(visionReply);
+
+           setStatusText("SPEAKING");
+           await Promise.resolve(auraSpeak(toSpokenText(visionReply)));
+           setStatusText("SYSTEM ONLINE");
+           
+           setCommandDetails({
+             title: "Image Analysis",
+             category: "Vision",
+             match: "100%", type: "text", data: visionReply,
+           });
+           
+           return visionReply;
+        }
       } catch (err) {
-        console.error("Vision API Error:", err);
-        // Fall through to standard text AI if vision fails
+        console.error("File reading error:", err);
+        // Fall through to standard text AI if file reading fails
       }
     }
 
-    // 2. Standard Text AI Fallback
     const profile = getUserProfile();
     const factsList = profile.facts?.length
       ? `Facts you remember about the user:\n- ${profile.facts.join("\n- ")}`
@@ -536,8 +533,10 @@ export const processCommand = async ({
       /\b(it|that|this|those|them|why|how come|what about|and then|what happened)\b/i.test(normalized) ||
       normalized.split(/\s+/).length <= 4;
 
+    // FIX: If we have a document, we ALWAYS need long-form generation so the AI has room to answer
     const wantsLongForm =
-      /\b(code|function|component|class|script|story|essay|list|steps|quiz|explain in detail|walk me through)\b/i.test(normalized);
+      hasDocumentContext ||
+      /\b(code|function|component|class|script|story|essay|list|steps|quiz|explain in detail|walk me through|answer|read|summarize)\b/i.test(normalized);
 
     const turns = getConversationTurns();
     const history = turnsToMessages(turns).slice(-16);
@@ -549,7 +548,8 @@ export const processCommand = async ({
     let partial = "";
     const reply = await askAIStream(messages, {
       signal,
-      maxTokens: wantsLongForm ? 1200 : 220,
+      // FIX: If hasDocumentContext is true, allow up to 2500 tokens so the AI doesn't get cut off
+      maxTokens: hasDocumentContext ? 2500 : (wantsLongForm ? 1200 : 220),
       temperature: wantsLongForm ? 0.7 : 0.6,
       onToken: (d) => {
         partial += d;
