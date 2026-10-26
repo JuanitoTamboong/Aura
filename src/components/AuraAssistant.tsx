@@ -251,30 +251,31 @@ const AuraAssistant: React.FC = () => {
     }
   });
 
-  // ✅ Global mouse listeners for dragging/resizing
+  // ✅ Global mouse and touch listeners for dragging/resizing
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent | TouchEvent) => {
-      if (!isDraggingRef.current) {
-        // Handle resize only if not dragging
-        if (isResizingRef.current) {
-          const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-          const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-          const dx = clientX - resizeStartRef.current.x;
-          const dy = clientY - resizeStartRef.current.y;
-          setEmbedSize({
-            w: Math.max(320, resizeStartRef.current.w + dx),
-            h: Math.max(220, resizeStartRef.current.h + dy),
-          });
-        }
-        return;
+      if (!isDraggingRef.current && !isResizingRef.current) return;
+
+      // Handle resize
+      if (isResizingRef.current) {
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+        const dx = clientX - resizeStartRef.current.x;
+        const dy = clientY - resizeStartRef.current.y;
+        setEmbedSize({
+          w: Math.max(320, resizeStartRef.current.w + dx),
+          h: Math.max(220, resizeStartRef.current.h + dy),
+        });
+      } 
+      // Handle drag
+      else if (isDraggingRef.current) {
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+        const dx = clientX - dragStartRef.current.x;
+        const dy = clientY - dragStartRef.current.y;
+        setEmbedPos({ x: dx, y: dy });
       }
-
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-
-      const dx = clientX - dragStartRef.current.x;
-      const dy = clientY - dragStartRef.current.y;
-      setEmbedPos({ x: dx, y: dy });
     };
 
     const handleMouseUp = () => {
@@ -2412,9 +2413,8 @@ const AuraAssistant: React.FC = () => {
                 position: "fixed",
                 top: "50%",
                 left: "50%",
-                transform: isMobile 
-                  ? "translate(-50%, -50%)" 
-                  : `translate(calc(-50% + ${embedPos.x}px), calc(-50% + ${embedPos.y}px))`,
+                // ✅ Always allow drag on mobile and desktop
+                transform: `translate(calc(-50% + ${embedPos.x}px), calc(-50% + ${embedPos.y}px))`,
                 width: isMobile ? "92vw" : embedSize.w,
                 height: isMobile ? "auto" : embedSize.h,
                 aspectRatio: isMobile ? "16/9" : "auto",
@@ -2432,15 +2432,17 @@ const AuraAssistant: React.FC = () => {
               <div
                 className="aura-embed-header"
                 style={{ 
-                  cursor: isMobile ? "default" : "move",
+                  cursor: "move", // Always show move cursor
                   padding: "10px 15px",
                   background: "var(--aura-panel)",
                   borderBottom: "1px solid var(--aura-border)",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "space-between"
+                  justifyContent: "space-between",
+                  touchAction: "none" // ✅ Prevents scrolling while dragging
                 }}
-                onMouseDown={!isMobile ? startDrag : undefined}
+                onMouseDown={startDrag}
+                onTouchStart={startDrag} // ✅ Enable touch dragging
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <span className="aura-live-dot" />
@@ -2452,6 +2454,7 @@ const AuraAssistant: React.FC = () => {
                   onClick={() => {
                     setEmbeddedVideo(null);
                     setEmbedPos({ x: 0, y: 0 });
+                    setEmbedSize({ w: 650, h: 400 }); // Reset size
                   }}
                   style={{
                     background: "transparent",
@@ -2478,33 +2481,33 @@ const AuraAssistant: React.FC = () => {
                   style={{ width: "100%", height: "100%", border: "none", display: "block" }}
                 />
                 
-                {/* ✅ IMPROVED: Minimalist corner resize handle */}
-                {!isMobile && (
-                  <div
-                    onMouseDown={startResize}
-                    style={{
-                      position: "absolute",
-                      bottom: "0",
-                      right: "0",
-                      width: "20px",
-                      height: "20px",
-                      cursor: "nwse-resize",
-                      zIndex: 2147483647,
-                      display: "flex",
-                      alignItems: "flex-end",
-                      justifyContent: "flex-end",
-                      padding: "2px",
-                      background: "transparent",
-                    }}
-                    title="Drag to resize"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="5" y1="21" x2="21" y2="5"></line>
-                      <line x1="12" y1="21" x2="21" y2="12"></line>
-                      <line x1="19" y1="21" x2="21" y2="19"></line>
-                    </svg>
-                  </div>
-                )}
+                {/* ✅ IMPROVED: Minimalist corner resize handle for ALL devices */}
+                <div
+                  onMouseDown={startResize}
+                  onTouchStart={startResize} // ✅ Enable touch resizing
+                  style={{
+                    position: "absolute",
+                    bottom: "0",
+                    right: "0",
+                    width: "30px", // Larger touch target
+                    height: "30px",
+                    cursor: "nwse-resize",
+                    zIndex: 2147483647,
+                    display: "flex",
+                    alignItems: "flex-end",
+                    justifyContent: "flex-end",
+                    padding: "4px",
+                    background: "transparent",
+                    touchAction: "none" // ✅ Prevents scrolling while resizing
+                  }}
+                  title="Drag to resize"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="21" x2="21" y2="5"></line>
+                    <line x1="12" y1="21" x2="21" y2="12"></line>
+                    <line x1="19" y1="21" x2="21" y2="19"></line>
+                  </svg>
+                </div>
               </div>
             </div>
           )}
