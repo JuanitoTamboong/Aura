@@ -1166,12 +1166,6 @@ const AuraAssistant: React.FC = () => {
                 mediaItems: result.mediaItems
               }
             });
-          } else {
-            // Only set the AI text title if we're NOT in the middle of a document read
-            // (AuraCommand handles setting the doc title during read)
-            if (commandDetailsRef.current?.category !== "AI Knowledge" || !commandDetailsRef.current?.data?.includes("Reading document")) {
-               // Do nothing here; AuraCommand already set the correct title in setCommandDetails
-            }
           }
 
           if (!isMobile && !isWorkspaceOpenRef.current && finalText && finalText.trim().length > 0) {
@@ -2440,12 +2434,23 @@ const AuraAssistant: React.FC = () => {
           lightMode={lightMode}
           onClose={() => setSettingsOpen(false)}
           onChange={(newSettings) => {
+            // ✅ FIX: Sync settings AND update the selected voice immediately
             setSettings(newSettings);
+            
+            const newVoiceName = newSettings.voice.selectedVoiceName;
+            if (newVoiceName && newVoiceName !== selectedVoiceNameRef.current) {
+              setSelectedVoiceName(newVoiceName);
+              selectedVoiceNameRef.current = newVoiceName;
+              localStorage.setItem("aura_selected_voice", newVoiceName);
+            }
           }}
           availableVoices={availableVoices}
           selectedVoiceName={selectedVoiceName}
           onVoiceChange={(name) => {
             setSelectedVoiceName(name);
+            selectedVoiceNameRef.current = name; // ✅ Update ref immediately
+            localStorage.setItem("aura_selected_voice", name);
+            
             setSettings((prev) => {
               const next = { ...prev, voice: { ...prev.voice, selectedVoiceName: name } };
               saveSettings(next);
